@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      // Suppress Vite HMR WebSocket closed errors in AI Studio iframe environment
+      (function() {
+        const origError = console.error;
+        console.error = function(...args) {
+          const msg = args.map(function(a) {
+            return (a && (a.message || a.stack || a.toString())) ? (a.message || a.stack || a.toString()) : String(a);
+          }).join(' ');
+          if (msg.includes('WebSocket closed without opened') || msg.includes('vite-hmr') || msg.includes('@vite/client')) {
+            return;
+          }
+          origError.apply(console, args);
+        };
+        window.addEventListener('error', function(event) {
+          const msg = event.message || (event.error && event.error.message) || '';
+          if (msg.includes('WebSocket closed without opened') || msg.includes('WebSocket')) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        }, true);
+        window.addEventListener('unhandledrejection', function(event) {
+          const msg = (event.reason && (event.reason.message || String(event.reason))) || '';
+          if (msg.includes('WebSocket closed without opened') || msg.includes('WebSocket')) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        }, true);
+      })();
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RIDHO OK QURBAN - Laporan Tabungan Qurban</title>
+    <meta name="description" content="Sistem Laporan Keuangan dan Data Tabungan Qurban RIDHO OK QURBAN Real-time dengan target tabungan dan pilihan varian hewan qurban." />
+    <meta name="theme-color" content="#0A192F" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="RIDHO QURBAN" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/pwa-192x192.png" />
+    <link rel="shortcut icon" href="/pwa-192x192.png" />
+    <meta property="og:title" content="RIDHO OK QURBAN - Laporan Tabungan Qurban" />
+    <meta property="og:description" content="Sistem Laporan Keuangan dan Data Tabungan Qurban RIDHO OK QURBAN Real-time dengan target tabungan dan pilihan varian hewan qurban." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Amiri:ital,wght@0,700;1,400&display=swap" rel="stylesheet">
+  </head>
+  <body class="bg-[#FAF8F5] text-[#1E293B] antialiased selection:bg-[#D4AF37]/30 selection:text-[#0A192F]">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

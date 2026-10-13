@@ -1,0 +1,89 @@
+{
+  "settings": {
+    "namaProgram": "RIDHO OK QURBAN",
+    "namaLembaga": "RIDHO OK QURBAN",
+    "targetIdulAdha": "2027-05-16",
+    "tahunHijriyah": "1448 H",
+    "tahunMasehi": "2027 M",
+    "adminPin": "1234",
+    "appsScriptWebhookUrl": "",
+    "kontakPengurus": "0812-3456-7890",
+    "rekeningTujuan": "Bank Syariah Indonesia (BSI) 7788990011 a.n. Tabungan Qurban Ridho",
+    "authorizedGoogleEmail": "redamofficialll@gmail.com"
+  },
+  "peserta": [
+    {
+      "id": "p-001",
+      "kodePeserta": "ROQ-001",
+      "nama": "Gilang Ramadhan",
+      "alamat": "Jl. Pangkalan jati Kec. Cinere",
+      "noHp": "0895373598130",
+      "varianHarga": 4500000,
+      "namaVarian": "Rp 4.500.000 (Kambing Tipe Super 2)",
+      "targetKurban": 4500000,
+      "totalTerkumpul": 2000000,
+      "status": "Dalam Proses",
+      "tanggalDaftar": "2026-10-12",
+      "catatanNiat": "Untuk Diri Sendiri",
+      "riwayatSetoran": [
+        {
+          "id": "set-001-1",
+          "tanggal": "2026-10-12",
+          "jumlah": 2000000,
+          "metode": "Transfer Bank",
+          "keterangan": "Setoran Tabungan Qurban",
+          "penerima": "Pengurus RIDHO OK",
+          "nomorKwitansi": "KW-ROQ-001-01"
+        }
+      ]
+    }
+  ],
+  "pengurus": [
+    {
+      "id": "adm-001",
+      "username": "Kemal1208",
+      "nama": "Kemal1208",
+      "password": "Kemal1208",
+      "role": "Pengurus Aktif",
+      "status": "Aktif",
+      "terakhirLogin": "2026-10-12T14:00:08.259Z"
+    },
+    {
+      "id": "adm-002",
+      "username": "Addin7846",
+      "nama": "Addin7846",
+      "password": "Addin7846",
+      "role": "Pengurus Aktif",
+      "status": "Aktif",
+      "terakhirLogin": null
+    },
+    {
+      "id": "adm-003",
+      "username": "Gilang2356",
+      "nama": "Gilang2356",
+      "password": "Gilang2356",
+      "role": "Pengurus Aktif",
+      "status": "Aktif",
+      "terakhirLogin": null
+    },
+    {
+      "id": "adm-004",
+      "username": "Apni4638",
+      "nama": "Apni4638",
+      "password": "Apni4638",
+      "role": "Pengurus Aktif",
+      "status": "Aktif",
+      "terakhirLogin": null
+    },
+    {
+      "id": "adm-005",
+      "username": "Ridho9856",
+      "nama": "Ridho9856",
+      "password": "Ridho9856",
+      "role": "Pengurus Aktif",
+      "status": "Aktif",
+      "terakhirLogin": "2026-10-12T14:00:17.240Z"
+    }
+  ],
+  "lastUpdated": "2026-10-12T14:00:21.056Z"
+}
