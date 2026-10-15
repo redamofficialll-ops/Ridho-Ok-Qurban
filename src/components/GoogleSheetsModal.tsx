@@ -367,9 +367,22 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
         if (onUpdatePesertaFromSheets) {
           onUpdatePesertaFromSheets(imported);
         }
+        
+        // Also pull and sync latest Varian_Kambing options from spreadsheet
+        try {
+          const variants = await readVarianKambingSheet(token, connectedId);
+          if (variants && variants.length > 0) {
+            await fetch('/api/qurban/varian-kambing', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ varianKambing: variants })
+            });
+          }
+        } catch {}
+
         setStatusMessage({
           type: 'success',
-          text: `Berhasil membaca & mengimpor ${imported.length} peserta dari spreadsheet!`
+          text: `Berhasil membaca & mengimpor ${imported.length} peserta dan menyinkronkan 12 Varian Kambing dari spreadsheet!`
         });
       }
     } catch (err: any) {

@@ -308,7 +308,7 @@ export const ModalDetailPeserta: React.FC<ModalDetailPesertaProps> = ({
               <span>Cetak Kwitansi Tanda Terima</span>
             </button>
 
-            {waLink && (
+            {isAdmin && waLink && (
               <a
                 href={waLink}
                 target="_blank"

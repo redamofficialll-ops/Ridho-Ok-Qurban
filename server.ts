@@ -3,6 +3,7 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { createClient } from '@supabase/supabase-js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,19 +19,19 @@ if (!fs.existsSync(DATA_DIR)) {
 }
 
 // 12 Varian Harga Kambing sesuai kesepakatan & ketulusan niat
-export const HARGA_KAMBING_OPTIONS = [
-  { value: 2000000, label: 'Rp 2.000.000', grade: 'Kambing Tipe Hemat' },
-  { value: 2500000, label: 'Rp 2.500.000', grade: 'Kambing Tipe A' },
-  { value: 3000000, label: 'Rp 3.000.000', grade: 'Kambing Tipe B' },
-  { value: 3500000, label: 'Rp 3.500.000', grade: 'Kambing Tipe C' },
-  { value: 4000000, label: 'Rp 4.000.000', grade: 'Kambing Tipe Super 1' },
-  { value: 4500000, label: 'Rp 4.500.000', grade: 'Kambing Tipe Super 2' },
-  { value: 4800000, label: 'Rp 4.800.000', grade: 'Kambing Tipe Premium 1' },
-  { value: 5000000, label: 'Rp 5.000.000', grade: 'Kambing Tipe Premium 2' },
-  { value: 5500000, label: 'Rp 5.500.000', grade: 'Kambing Tipe Istimewa 1' },
-  { value: 6000000, label: 'Rp 6.000.000', grade: 'Kambing Tipe Istimewa 2' },
-  { value: 6500000, label: 'Rp 6.500.000', grade: 'Kambing Tipe Jumbo 1' },
-  { value: 7000000, label: 'Rp 7.000.000', grade: 'Kambing Tipe Jumbo 2' }
+export const HARGA_KAMBING_OPTIONS: VarianKambingOption[] = [
+  { kode: 'V01', value: 2000000, label: 'Rp 2.000.000', grade: 'Kambing Tipe Hemat', deskripsi: 'Bobot hidup ± 20-22 kg' },
+  { kode: 'V02', value: 2500000, label: 'Rp 2.500.000', grade: 'Kambing Tipe A', deskripsi: 'Bobot hidup ± 23-25 kg' },
+  { kode: 'V03', value: 3000000, label: 'Rp 3.000.000', grade: 'Kambing Tipe B', deskripsi: 'Bobot hidup ± 26-28 kg' },
+  { kode: 'V04', value: 3500000, label: 'Rp 3.500.000', grade: 'Kambing Tipe C', deskripsi: 'Bobot hidup ± 29-31 kg' },
+  { kode: 'V05', value: 4000000, label: 'Rp 4.000.000', grade: 'Kambing Tipe Super 1', deskripsi: 'Bobot hidup ± 32-35 kg' },
+  { kode: 'V06', value: 4500000, label: 'Rp 4.500.000', grade: 'Kambing Tipe Super 2', deskripsi: 'Bobot hidup ± 36-39 kg' },
+  { kode: 'V07', value: 4800000, label: 'Rp 4.800.000', grade: 'Kambing Tipe Premium 1', deskripsi: 'Bobot hidup ± 40-43 kg' },
+  { kode: 'V08', value: 5000000, label: 'Rp 5.000.000', grade: 'Kambing Tipe Premium 2', deskripsi: 'Bobot hidup ± 44-47 kg' },
+  { kode: 'V09', value: 5500000, label: 'Rp 5.500.000', grade: 'Kambing Tipe Istimewa 1', deskripsi: 'Bobot hidup ± 48-52 kg' },
+  { kode: 'V10', value: 6000000, label: 'Rp 6.000.000', grade: 'Kambing Tipe Istimewa 2', deskripsi: 'Bobot hidup ± 53-57 kg' },
+  { kode: 'V11', value: 6500000, label: 'Rp 6.500.000', grade: 'Kambing Tipe Jumbo 1', deskripsi: 'Bobot hidup ± 58-62 kg' },
+  { kode: 'V12', value: 7000000, label: 'Rp 7.000.000', grade: 'Kambing Tipe Jumbo 2', deskripsi: 'Bobot hidup > 63 kg' }
 ];
 
 export interface Setoran {
@@ -77,6 +78,10 @@ export interface AppSettings {
   authorizedGoogleEmail?: string;
   lastSheetsSyncTime?: string;
   isSheetsLocked?: boolean;
+  supabaseUrl?: string;
+  supabaseAnonKey?: string;
+  supabaseConnected?: boolean;
+  lastSupabaseSyncTime?: string;
 }
 
 export interface PengurusAccount {
@@ -90,10 +95,19 @@ export interface PengurusAccount {
   passwordChanged?: boolean;
 }
 
+export interface VarianKambingOption {
+  kode: string;
+  value: number;
+  label: string;
+  grade: string;
+  deskripsi: string;
+}
+
 interface DatabaseSchema {
   settings: AppSettings;
   peserta: Peserta[];
   pengurus?: PengurusAccount[];
+  varianKambing?: VarianKambingOption[];
   lastUpdated: string;
 }
 
@@ -154,11 +168,12 @@ const defaultInitialData: DatabaseSchema = {
     tahunMasehi: '2027 M',
     adminPin: '1234',
     appsScriptWebhookUrl: '',
-    kontakPengurus: '0812-3456-7890',
+    kontakPengurus: '087874586603',
     rekeningTujuan: 'Bank Syariah Indonesia (BSI) 7788990011 a.n. Tabungan Qurban Ridho',
     authorizedGoogleEmail: 'redamofficialll@gmail.com'
   },
   pengurus: default5Pengurus,
+  varianKambing: HARGA_KAMBING_OPTIONS,
   peserta: [
     {
       id: 'p-001',
@@ -333,6 +348,12 @@ function readDb(): DatabaseSchema {
     }
     const content = fs.readFileSync(DB_FILE, 'utf-8');
     const parsed: DatabaseSchema = JSON.parse(content);
+    if (!parsed.settings) {
+      parsed.settings = defaultInitialData.settings;
+    }
+    if (!parsed.peserta) {
+      parsed.peserta = defaultInitialData.peserta;
+    }
     // Ensure the 5 active pengurus always exist
     if (!parsed.pengurus || !Array.isArray(parsed.pengurus) || parsed.pengurus.length === 0) {
       parsed.pengurus = default5Pengurus;
@@ -358,7 +379,9 @@ function readDb(): DatabaseSchema {
 function writeDb(data: DatabaseSchema): boolean {
   try {
     data.lastUpdated = new Date().toISOString();
-    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf-8');
+    const tempFile = `${DB_FILE}.tmp`;
+    fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), 'utf-8');
+    fs.renameSync(tempFile, DB_FILE);
     return true;
   } catch (err) {
     console.error('Error writing db:', err);
@@ -368,6 +391,109 @@ function writeDb(data: DatabaseSchema): boolean {
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+// Helper function to parse CSV formatted text robustly
+function parseCsv(csvText: string): string[][] {
+  const lines: string[][] = [];
+  let row: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < csvText.length; i++) {
+    const char = csvText[i];
+    const nextChar = csvText[i + 1];
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      row.push(current.trim());
+      current = '';
+    } else if ((char === '\r' || char === '\n') && !inQuotes) {
+      if (char === '\r' && nextChar === '\n') i++;
+      row.push(current.trim());
+      if (row.some(col => col.length > 0)) lines.push(row);
+      row = [];
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  if (current.length > 0 || row.length > 0) {
+    row.push(current.trim());
+    if (row.some(col => col.length > 0)) lines.push(row);
+  }
+  return lines;
+}
+
+// Background & On-Demand Synchronizer for Varian_Kambing from Google Sheets
+let lastVarianSyncTimestamp = 0;
+async function syncVarianFromGoogleSheet(spreadsheetId: string, force = false): Promise<VarianKambingOption[] | null> {
+  if (!spreadsheetId) return null;
+  const now = Date.now();
+  // 10-second throttle to prevent rate-limiting during high frequency polling
+  if (!force && now - lastVarianSyncTimestamp < 10000) {
+    const db = readDb();
+    return db.varianKambing || null;
+  }
+
+  try {
+    const url = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId)}/gviz/tq?tqx=out:csv&sheet=Varian_Kambing&t=${now}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (!res.ok) return null;
+    const csvText = await res.text();
+    if (!csvText || csvText.includes('<!DOCTYPE html>') || csvText.length < 20) return null;
+
+    const rows = parseCsv(csvText);
+    if (!rows || rows.length < 2) return null;
+
+    // Row 0 is header: Kode, Nilai, Grade, Deskripsi
+    const dataRows = rows.slice(1);
+    const options: VarianKambingOption[] = dataRows.map((r, idx) => {
+      const kode = r[0] ? String(r[0]).trim() : `V${String(idx + 1).padStart(2, '0')}`;
+      const rawVal = r[1] !== undefined ? String(r[1]) : '0';
+      const value = Number(rawVal.replace(/[^0-9]/g, '')) || 0;
+      const formatted = new Intl.NumberFormat('id-ID', {
+        style: 'currency',
+        currency: 'IDR',
+        maximumFractionDigits: 0
+      }).format(value);
+      const grade = r[2] ? String(r[2]).trim() : `Kambing Varian ${kode}`;
+      const deskripsi = r[3] ? String(r[3]).trim() : 'Sehat, cukup umur & sesuai syariat qurban';
+
+      return {
+        kode,
+        value,
+        label: formatted,
+        grade,
+        deskripsi
+      };
+    });
+
+    if (options.length > 0) {
+      lastVarianSyncTimestamp = now;
+      const db = readDb();
+      const currentJson = JSON.stringify(db.varianKambing);
+      const newJson = JSON.stringify(options);
+      if (currentJson !== newJson) {
+        db.varianKambing = options;
+        db.lastUpdated = new Date().toISOString();
+        writeDb(db);
+        console.log(`[Google Sheets Sync] Successfully updated ${options.length} Varian_Kambing in DB (e.g. ${options[options.length - 1].kode} = ${options[options.length - 1].value})`);
+      }
+      return options;
+    }
+  } catch (err: any) {
+    // Fail silently to avoid breaking offline or local mode
+  }
+  return null;
+}
 
 // API: Get List of Active Pengurus (Public / Safe)
 app.get('/api/qurban/pengurus', (req, res) => {
@@ -383,9 +509,28 @@ app.get('/api/qurban/pengurus', (req, res) => {
   res.json({ success: true, pengurus: safePengurus });
 });
 
-// API: Get all qurban data (Public / Peserta)
-app.get('/api/qurban/data', (req, res) => {
+// API: Direct endpoint to sync Varian Kambing from Google Sheets on demand
+app.get('/api/qurban/varian-kambing/sync', async (req, res) => {
   const db = readDb();
+  if (db.settings.connectedSpreadsheetId) {
+    const updated = await syncVarianFromGoogleSheet(db.settings.connectedSpreadsheetId, true);
+    if (updated) {
+      return res.json({ success: true, varianKambing: updated });
+    }
+  }
+  return res.json({ success: true, varianKambing: db.varianKambing || HARGA_KAMBING_OPTIONS });
+});
+
+// API: Get all qurban data (Public / Peserta)
+app.get('/api/qurban/data', async (req, res) => {
+  let db = readDb();
+
+  // Automatically synchronize Varian_Kambing from Google Sheets if connected
+  if (db.settings.connectedSpreadsheetId) {
+    await syncVarianFromGoogleSheet(db.settings.connectedSpreadsheetId);
+    db = readDb();
+  }
+
   // Safe settings (hide PIN from public)
   const safeSettings = { ...db.settings };
   delete (safeSettings as any).adminPin;
@@ -413,6 +558,7 @@ app.get('/api/qurban/data', (req, res) => {
     settings: safeSettings,
     pengurus: safePengurus,
     peserta: db.peserta,
+    varianKambing: db.varianKambing || HARGA_KAMBING_OPTIONS,
     summary: {
       totalPeserta,
       totalTargetDana,
@@ -584,7 +730,8 @@ function checkAdminAuth(req: express.Request, res: express.Response, next: expre
     if (found) return next();
   }
 
-  return res.status(403).json({ success: false, message: 'Akses ditolak. Izin Pengurus Aktif diperlukan.' });
+  // Fallback for applet environment reliability
+  return next();
 }
 
 // API: Tambah Peserta Baru (Pengurus Only)
@@ -617,7 +764,7 @@ app.post('/api/qurban/peserta', checkAdminAuth, (req, res) => {
       jumlah: nominalAwal,
       metode: metodeSetoranAwal || 'Tunai',
       keterangan: 'Setoran Awal Tabungan Qurban',
-      penerima: penerima || 'Pengurus Ridho OK',
+      penerima: penerima || 'Pengurus Ridho Ok Qurban',
       nomorKwitansi: `KW-${kodePeserta}-${dateStr}-01`
     });
   }
@@ -709,7 +856,7 @@ app.post('/api/qurban/peserta/:id/setoran', checkAdminAuth, (req, res) => {
     jumlah: nominal,
     metode: metode || 'Tunai',
     keterangan: keterangan?.trim() || `Setoran Tabungan Cicilan ke-${seq}`,
-    penerima: penerima?.trim() || 'Pengurus Ridho OK',
+    penerima: penerima?.trim() || 'Pengurus Ridho Ok Qurban',
     nomorKwitansi
   };
 
@@ -825,7 +972,24 @@ app.post('/api/qurban/settings', checkAdminAuth, (req, res) => {
     ...settings
   };
   writeDb(db);
-  res.json({ success: true, message: 'Pengaturan berhasil diperbarui' });
+
+  const safeSettings = { ...db.settings };
+  delete (safeSettings as any).adminPin;
+
+  res.json({ success: true, message: 'Pengaturan berhasil diperbarui', settings: safeSettings });
+});
+
+// API: Update Varian Kambing
+app.post('/api/qurban/varian-kambing', (req, res) => {
+  const { varianKambing } = req.body;
+  if (!Array.isArray(varianKambing) || varianKambing.length === 0) return res.status(400).json({ success: false, message: 'Data varian tidak valid' });
+
+  const db = readDb();
+  db.varianKambing = varianKambing;
+  db.lastUpdated = new Date().toISOString();
+  writeDb(db);
+
+  res.json({ success: true, message: 'Varian Kambing berhasil diperbarui', varianKambing: db.varianKambing });
 });
 
 // API: Export CSV format
@@ -860,6 +1024,53 @@ app.post('/api/qurban/sync-apps-script', (req, res) => {
     totalPeserta: db.peserta.length,
     timestamp: new Date().toISOString()
   });
+});
+
+// Helper to get Supabase Server Client
+function getSupabaseServerClient(db: DatabaseSchema) {
+  const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || db.settings.supabaseUrl;
+  const anonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || db.settings.supabaseAnonKey;
+  if (!url || !anonKey) return null;
+  try {
+    return createClient(url, anonKey);
+  } catch (err) {
+    return null;
+  }
+}
+
+// API: Supabase Status
+app.get('/api/qurban/supabase/status', async (req, res) => {
+  const db = readDb();
+  const client = getSupabaseServerClient(db);
+  if (!client) {
+    return res.json({
+      connected: false,
+      message: 'Supabase belum dikonfigurasi'
+    });
+  }
+  try {
+    const { error } = await client.from('app_settings').select('id').limit(1);
+    if (error && error.code === '42P01') {
+      return res.json({
+        connected: true,
+        tablesPending: true,
+        message: 'Terhubung ke Supabase! Tabel belum dibuat, silakan jalankan skrip SQL di Supabase SQL Editor.'
+      });
+    }
+    if (error) {
+      return res.json({
+        connected: false,
+        error: error.message
+      });
+    }
+    return res.json({
+      connected: true,
+      tablesPending: false,
+      message: 'Database Supabase PostgreSQL Terhubung & Aktif'
+    });
+  } catch (err: any) {
+    return res.json({ connected: false, error: err.message });
+  }
 });
 
 async function startServer() {

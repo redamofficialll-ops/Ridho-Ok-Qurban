@@ -23,7 +23,7 @@ export const ModalSetorTabungan: React.FC<ModalSetorTabunganProps> = ({
   const [tanggal, setTanggal] = useState<string>(new Date().toISOString().slice(0, 10));
   const [metode, setMetode] = useState<'Tunai' | 'Transfer Bank' | 'QRIS'>('Tunai');
   const [keterangan, setKeterangan] = useState<string>(`Setoran Cicilan Tabungan Qurban`);
-  const [penerima, setPenerima] = useState<string>('Ust. Ridwan (Bendahara)');
+  const [penerima, setPenerima] = useState<string>('Pengurus Ridho Ok Qurban');
 
   const [isLoading, setIsLoading] = useState(false);
 

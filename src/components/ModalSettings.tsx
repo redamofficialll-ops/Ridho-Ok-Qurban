@@ -27,8 +27,30 @@ export const ModalSettings: React.FC<ModalSettingsProps> = ({
   const [authorizedGoogleEmail, setAuthorizedGoogleEmail] = useState(settings.authorizedGoogleEmail || 'redamofficialll@gmail.com');
 
   const [isLoading, setIsLoading] = useState(false);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  const previousIsOpen = React.useRef(false);
+
+  React.useEffect(() => {
+    if (isOpen && !previousIsOpen.current) {
+      setNamaProgram(settings.namaProgram || 'RIDHO OK QURBAN');
+      setNamaLembaga(settings.namaLembaga || 'RIDHO OK QURBAN');
+      setTargetIdulAdha(settings.targetIdulAdha || '2027-05-16');
+      setTahunHijriyah(settings.tahunHijriyah || '1448 H');
+      setTahunMasehi(settings.tahunMasehi || '2027 M');
+      setKontakPengurus(settings.kontakPengurus || '');
+      setRekeningTujuan(settings.rekeningTujuan || '');
+      setCustomLogoUrl(settings.customLogoUrl || '');
+      setAuthorizedGoogleEmail(settings.authorizedGoogleEmail || 'redamofficialll@gmail.com');
+      setAdminPin('');
+      setIsUploadingLogo(false);
+      setErrorMsg('');
+      setSuccessMsg('');
+    }
+    previousIsOpen.current = isOpen;
+  }, [isOpen, settings]);
 
   if (!isOpen) return null;
 
@@ -39,9 +61,16 @@ export const ModalSettings: React.FC<ModalSettingsProps> = ({
         setErrorMsg('Ukuran file logo maksimal 2MB!');
         return;
       }
+      setIsUploadingLogo(true);
+      setErrorMsg('');
       const reader = new FileReader();
       reader.onloadend = () => {
         setCustomLogoUrl(reader.result as string);
+        setIsUploadingLogo(false);
+      };
+      reader.onerror = () => {
+        setIsUploadingLogo(false);
+        setErrorMsg('Gagal membaca file logo.');
       };
       reader.readAsDataURL(file);
     }
@@ -49,6 +78,10 @@ export const ModalSettings: React.FC<ModalSettingsProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isUploadingLogo) {
+      setErrorMsg('Mohon tunggu sebentar, logo sedang dimuat...');
+      return;
+    }
     setIsLoading(true);
     setErrorMsg('');
     setSuccessMsg('');
@@ -248,7 +281,7 @@ export const ModalSettings: React.FC<ModalSettingsProps> = ({
               </label>
               <input
                 type="text"
-                placeholder="Contoh: 0812-3456-7890 (Ust. Ridwan)"
+                placeholder="Contoh: 087874586603 (Admin Ridho Ok Qurban)"
                 value={kontakPengurus}
                 onChange={(e) => setKontakPengurus(e.target.value)}
                 className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white font-medium"

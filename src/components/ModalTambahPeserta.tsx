@@ -32,11 +32,13 @@ export const ModalTambahPeserta: React.FC<ModalTambahPesertaProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
 
   React.useEffect(() => {
-    if (varianOptions.length > 0) {
+    if (isOpen && varianOptions.length > 0) {
       const selected = varianOptions.find(o => o.value === initialVarianHarga) || varianOptions[0];
-      setVarianKode(selected.kode);
+      if (selected) {
+        setVarianKode(selected.kode);
+      }
     }
-  }, [varianOptions, initialVarianHarga]);
+  }, [isOpen, initialVarianHarga]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');

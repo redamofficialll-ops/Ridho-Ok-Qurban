@@ -42,7 +42,7 @@ export const LogoEmblem: React.FC<LogoEmblemProps> = ({
 
       {showText && (
         <div className="flex flex-col justify-center">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-3">
             <span className={`font-serif-brand font-black tracking-wider text-[#D4AF37] drop-shadow-sm ${textSizes[size]}`}>
               RIDHO OK QURBAN
             </span>

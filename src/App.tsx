@@ -17,10 +17,10 @@ import { KwitansiModal } from './components/KwitansiModal';
 import { ModalEditPeserta } from './components/ModalEditPeserta';
 import { ModalSettings } from './components/ModalSettings';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import { SyaratKetentuanCard } from './components/SyaratKetentuanCard';
+import { WA_CHAT_URL, WA_PHONE, WhatsAppIcon } from './components/WhatsAppChatButton';
 import { Peserta, AppSettings, SummaryStats, HARGA_KAMBING_OPTIONS, VarianKambingOption, formatRupiah, ActiveAdminSession } from './types/qurban';
 import { Tag, ArrowRight, FileSpreadsheet, Lock } from 'lucide-react';
-import { getAccessToken, initAuth, getSavedGoogleUser } from './services/googleAuth';
-import { fetchSpreadsheetDetails, populateSheetData, readVarianKambingSheet, populateRiwayatSetoranSheet } from './services/googleSheets';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -65,9 +65,8 @@ export default function App() {
     return sessionStorage.getItem(ADMIN_PIN_KEY) || '1234';
   });
 
-  const [googleEmailConnected, setGoogleEmailConnected] = useState<string | null>(() => {
-    const saved = getSavedGoogleUser();
-    return saved?.email || null;
+  const [adminPin, setAdminPin] = useState<string>(() => {
+    return sessionStorage.getItem(ADMIN_PIN_KEY) || '1234';
   });
 
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -91,35 +90,14 @@ export default function App() {
   const [presetVariantForRegister, setPresetVariantForRegister] = useState<number>(4500000);
   const [varianOptions, setVarianOptions] = useState<VarianKambingOption[]>(HARGA_KAMBING_OPTIONS);
 
-  // Fetch variant options from sheet if connected
-  const fetchOptions = useCallback(async () => {
-    if (settings.connectedSpreadsheetId) {
-      try {
-        const token = await getAccessToken();
-        if (token) {
-           const options = await readVarianKambingSheet(token, settings.connectedSpreadsheetId);
-           if (options && options.length > 0) {
-             setVarianOptions(options);
-           }
-        }
-      } catch (err) {
-        console.warn("Could not load options from sheet, using default", err);
-      }
-    } else {
-      setVarianOptions(HARGA_KAMBING_OPTIONS);
-    }
-  }, [settings.connectedSpreadsheetId]);
-
-  useEffect(() => {
-    fetchOptions();
-  }, [fetchOptions]);
+  }, []);
 
   // Load from API with localStorage fallback
   const fetchData = useCallback(async (isSilent = false): Promise<Peserta[]> => {
     if (!isSilent) setIsRefreshing(true);
     let fetchedPeserta: Peserta[] = [];
     try {
-      const res = await fetch('/api/qurban/data');
+      const res = await fetch(`/api/qurban/data?t=${Date.now()}`);
       if (res.ok) {
         const json = await res.json();
         if (json.success) {
@@ -127,6 +105,7 @@ export default function App() {
           setPeserta(fetchedPeserta);
           if (json.settings) setSettings(json.settings);
           if (json.summary) setSummary(json.summary);
+          if (json.varianKambing) setVarianOptions(json.varianKambing);
           setLastUpdatedTime(json.lastUpdated || new Date().toISOString());
 
           // Save to local cache
@@ -151,10 +130,8 @@ export default function App() {
     } finally {
       if (!isSilent) setIsRefreshing(false);
     }
-    // Also sync variant options from Google Sheets
-    await fetchOptions();
     return fetchedPeserta;
-  }, [fetchOptions]);
+  }, []);
 
   // Initial fetch and automatic real-time sync polling (every 6 seconds)
   useEffect(() => {
@@ -187,27 +164,7 @@ export default function App() {
     }
   }, [peserta]);
 
-  // Keep official Google Account state synced across refresh
-  useEffect(() => {
-    const unsubscribe = initAuth(
-      (user) => {
-        if (user && user.email) {
-          setGoogleEmailConnected(user.email);
-        }
-      },
-      () => {
-        const saved = getSavedGoogleUser();
-        if (saved?.email) {
-          setGoogleEmailConnected(saved.email);
-        } else {
-          setGoogleEmailConnected(null);
-        }
-      }
-    );
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, []);
+
 
   // Handle Admin Login (supports 5 pengurus accounts or PIN)
   const handleAdminLogin = async (credentials: { username?: string; password?: string; pin?: string }): Promise<boolean> => {
@@ -271,38 +228,7 @@ export default function App() {
     localStorage.removeItem(ACTIVE_PENGURUS_KEY);
   };
 
-  // Background Google Spreadsheet Sync
-  const syncToConnectedSheet = async (list: Peserta[]) => {
-    if (!settings.connectedSpreadsheetId || settings.autoSyncSheets === false) return;
-    try {
-      const token = await getAccessToken();
-      if (!token) return;
-      const details = await fetchSpreadsheetDetails(token, settings.connectedSpreadsheetId);
-      await populateSheetData(token, settings.connectedSpreadsheetId, details.sheetName, details.sheetId, list);
-      await populateRiwayatSetoranSheet(token, settings.connectedSpreadsheetId, list);
-      const nowIso = new Date().toISOString();
-      await handleSaveSettings({ lastSheetsSyncTime: nowIso });
-      console.log('Realtime sync to connected Google Spreadsheet successful');
-    } catch (e) {
-      console.warn('Realtime sync notice:', e);
-    }
-  };
 
-  const handleUpdatePesertaFromSheets = async (importedList: Peserta[]) => {
-    try {
-      const res = await fetch('/api/qurban/peserta/bulk-sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ peserta: importedList })
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        await fetchData(true);
-      }
-    } catch (err) {
-      console.error('Error importing from sheets:', err);
-    }
-  };
 
   // Handle Tambah Peserta
   const handleTambahPeserta = async (payload: any): Promise<boolean> => {
@@ -319,9 +245,6 @@ export default function App() {
       const data = await res.json();
       if (res.ok && data.success) {
         await fetchData(true);
-        if (data.peserta) {
-          syncToConnectedSheet([data.peserta, ...peserta]);
-        }
         return true;
       }
       return false;
@@ -374,10 +297,6 @@ export default function App() {
       const data = await res.json();
       if (res.ok && data.success) {
         const newPeserta = await fetchData(true);
-        if (data.peserta) {
-          const updatedList = newPeserta.map(p => p.id === pesertaId ? data.peserta : p);
-          syncToConnectedSheet(updatedList);
-        }
         return true;
       }
       return false;
@@ -401,8 +320,7 @@ export default function App() {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        const newPeserta = await fetchData(true);
-        syncToConnectedSheet(newPeserta);
+        await fetchData(true);
       }
     } catch (err) {
       console.error(err);
@@ -424,10 +342,6 @@ export default function App() {
       const data = await res.json();
       if (res.ok && data.success) {
         await fetchData(true);
-        const target = peserta.find(p => p.id === pesertaId);
-        if (target) {
-          const updatedRiwayat = (target.riwayatSetoran || []).filter(s => s.id !== setoranId);
-          const newTotal = updatedRiwayat.reduce((sum, s) => sum + s.jumlah, 0);
           const updatedTarget: Peserta = {
             ...target,
             riwayatSetoran: updatedRiwayat,
@@ -435,7 +349,6 @@ export default function App() {
             status: newTotal >= target.targetKurban ? 'Lunas' : 'Dalam Proses'
           };
           const updatedList = peserta.map(p => p.id === pesertaId ? updatedTarget : p);
-          syncToConnectedSheet(updatedList);
         }
         return true;
       }
@@ -475,6 +388,20 @@ export default function App() {
   // Handle Save Settings
   const handleSaveSettings = async (newSettings: Partial<AppSettings>): Promise<boolean> => {
     try {
+      // Optimistic instant update so logo/settings reflect immediately
+      setSettings(prev => {
+        const updated = { ...prev, ...newSettings };
+        const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            parsed.settings = updated;
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(parsed));
+          } catch {}
+        }
+        return updated;
+      });
+
       const res = await fetch('/api/qurban/settings', {
         method: 'POST',
         headers: {
@@ -490,7 +417,9 @@ export default function App() {
           setAdminPin(newSettings.adminPin);
           sessionStorage.setItem(ADMIN_PIN_KEY, newSettings.adminPin);
         }
-        setSettings(prev => ({ ...prev, ...newSettings }));
+        if (data.settings) {
+          setSettings(data.settings);
+        }
         await fetchData(true);
         return true;
       }
@@ -547,8 +476,8 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
-        {/* Connected Google Spreadsheet Real-time Status Banner */}
-        {settings.connectedSpreadsheetId && (
+        {/* Connected Google Spreadsheet Real-time Status Banner - Hanya tampil di Mode Pengurus */}
+        {isAdmin && settings.connectedSpreadsheetId && (
           <div className="bg-[#0A192F] text-[#FAF8F5] border-2 border-[#D4AF37]/50 rounded-2xl px-5 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-lg">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400 shrink-0">
@@ -570,37 +499,26 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
-              {isAdmin ? (
-                <>
-                  <a
-                    href={`https://docs.google.com/spreadsheets/d/${settings.connectedSpreadsheetId}/edit`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:from-[#E5C07B] hover:to-[#C59B27] text-[#0A192F] font-bold text-xs transition shadow-sm"
-                    title="Buka Spreadsheet di Tab Baru"
-                  >
-                    <span>Buka di Google Sheets</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </a>
-                  <button
-                    onClick={() => setIsAppsScriptModalOpen(true)}
-                    className="px-3 py-1.5 rounded-xl bg-[#1E293B] hover:bg-[#334155] border border-white/20 text-white font-semibold text-xs transition"
-                  >
-                    Kelola Sinkron
-                  </button>
-                </>
-              ) : (
-                <button
-                  onClick={() => setIsLoginModalOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#1E293B] hover:bg-[#334155] border border-amber-500/40 text-amber-300 font-semibold text-xs transition shadow-sm"
-                  title="Hanya Pengurus yang Berwenang Membuka Google Sheets"
+            {isAdmin && (
+              <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+                <a
+                  href={`https://docs.google.com/spreadsheets/d/${settings.connectedSpreadsheetId}/edit`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:from-[#E5C07B] hover:to-[#C59B27] text-[#0A192F] font-bold text-xs transition shadow-sm"
+                  title="Buka Spreadsheet di Tab Baru"
                 >
-                  <Lock className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Buka Google Sheets (Khusus Pengurus)</span>
+                  <span>Buka di Google Sheets</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </a>
+                <button
+                  onClick={() => setIsAppsScriptModalOpen(true)}
+                  className="px-3 py-1.5 rounded-xl bg-[#1E293B] hover:bg-[#334155] border border-white/20 text-white font-semibold text-xs transition"
+                >
+                  Kelola Sinkron
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -616,7 +534,7 @@ export default function App() {
               </div>
               <div>
                 <h2 className="text-sm font-bold text-[#0A192F] uppercase tracking-wider flex items-center gap-2">
-                  <span>12 Varian Harga Hewan Kambing Qurban</span>
+                  <span style={{ fontFamily: "'League Spartan', sans-serif" }}>12 Varian Harga Hewan Kambing Qurban</span>
                   <span className="text-[10px] font-normal text-[#8C6D23] bg-amber-100/60 px-2 py-0.5 rounded-full">
                     Sesuai kesepakatan & ketulusan niat
                   </span>
@@ -658,33 +576,38 @@ export default function App() {
           </div>
         </div>
 
-        {/* Tabel & Laporan Utama Data Peserta */}
-        <TabelPeserta
-          peserta={peserta}
-          isAdmin={isAdmin}
-          onTambahPeserta={() => {
-            setPresetVariantForRegister(4500000);
-            setIsTambahPesertaModalOpen(true);
-          }}
-          onCatatSetoran={(p) => {
-            setSelectedPesertaForSetor(p);
-            setIsSetorModalOpen(true);
-          }}
-          onLihatDetail={(p) => {
-            setSelectedPesertaForDetail(p);
-            setIsDetailModalOpen(true);
-          }}
-          onCetakKwitansi={(p) => {
-            setSelectedPesertaForKwitansi(p);
-            setIsKwitansiModalOpen(true);
-          }}
-          onEditPeserta={(p) => {
-            setSelectedPesertaForEdit(p);
-            setIsEditModalOpen(true);
-          }}
-          onHapusPeserta={handleHapusPeserta}
-          onExportPdf={handleExportPdf}
-        />
+        {/* Syarat & Ketentuan Program Tabungan Qurban */}
+        <SyaratKetentuanCard />
+
+        {/* Tabel & Laporan Utama Data Peserta - Hanya terlihat di Mode Pengurus, dalam Mode Peserta tidak terlihat */}
+        {isAdmin && (
+          <TabelPeserta
+            peserta={peserta}
+            isAdmin={isAdmin}
+            onTambahPeserta={() => {
+              setPresetVariantForRegister(4500000);
+              setIsTambahPesertaModalOpen(true);
+            }}
+            onCatatSetoran={(p) => {
+              setSelectedPesertaForSetor(p);
+              setIsSetorModalOpen(true);
+            }}
+            onLihatDetail={(p) => {
+              setSelectedPesertaForDetail(p);
+              setIsDetailModalOpen(true);
+            }}
+            onCetakKwitansi={(p) => {
+              setSelectedPesertaForKwitansi(p);
+              setIsKwitansiModalOpen(true);
+            }}
+            onEditPeserta={(p) => {
+              setSelectedPesertaForEdit(p);
+              setIsEditModalOpen(true);
+            }}
+            onHapusPeserta={handleHapusPeserta}
+            onExportPdf={handleExportPdf}
+          />
+        )}
       </main>
 
       {/* Footer */}
@@ -697,6 +620,15 @@ export default function App() {
             <span className="text-[11px] text-white/60 mt-0.5">
               Sistem Laporan Keuangan Tabungan Qurban Real-time & Gratis ({settings.tahunHijriyah || '1447 H'} / {settings.tahunMasehi || '2026 M'})
             </span>
+            <a
+              href={WA_CHAT_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/70 border border-emerald-500/50 text-emerald-300 hover:text-white hover:bg-[#25D366] transition text-[11px] font-semibold mt-1.5 shadow-sm active:scale-95"
+            >
+              <WhatsAppIcon className="w-3.5 h-3.5 text-[#25D366] shrink-0" />
+              <span>Layanan WhatsApp: <strong className="font-mono text-white">{WA_PHONE}</strong></span>
+            </a>
           </div>
 
           <div className="text-center font-arabic text-sm text-[#D4AF37]">
@@ -719,6 +651,7 @@ export default function App() {
         onClose={() => setIsVarianModalOpen(false)}
         isAdmin={isAdmin}
         varianOptions={varianOptions}
+        initialSelectedHarga={presetVariantForRegister}
         onSelectVariantForRegister={(harga) => {
           setPresetVariantForRegister(harga);
           setIsTambahPesertaModalOpen(true);
@@ -811,6 +744,7 @@ export default function App() {
         }}
         peserta={selectedPesertaForEdit}
         onUpdatePeserta={handleUpdatePeserta}
+        varianOptions={varianOptions}
       />
 
       {/* 9. Settings Modal */}

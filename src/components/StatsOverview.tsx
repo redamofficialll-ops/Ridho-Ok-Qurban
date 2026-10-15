@@ -38,8 +38,10 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({ summary, settings 
               <Sparkles className="w-3.5 h-3.5" />
               <span>Program Tabungan Qurban 1448H/2027M</span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-extrabold text-[#FAF8F5] tracking-tight">
-              Laporan Keuangan Tabungan Qurban <span className="text-[#D4AF37] font-serif-brand">RIDHO OK</span>
+            <h1 className="text-2xl md:text-3xl font-extrabold text-[#FAF8F5] tracking-tight" style={{ fontFamily: 'Times New Roman, serif' }}>
+              Laporan Keuangan Tabungan Qurban
+              <br />
+              <span className="text-[#D4AF37] font-serif-brand">RIDHO OK QURBAN</span>
             </h1>
             <p className="text-sm text-[#FAF8F5]/85 leading-relaxed">
               Transparan, amanah, dan tercatat otomatis secara real-time. Memudahkan jamaah & peserta merencanakan ibadah qurban kambing dengan beragam varian harga sesuai kesepakatan & ketulusan niat.

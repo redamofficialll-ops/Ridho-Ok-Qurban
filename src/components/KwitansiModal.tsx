@@ -197,7 +197,7 @@ export const KwitansiModal: React.FC<KwitansiModalProps> = ({
       doc.setDrawColor(100, 100, 100);
       doc.line(30, sigY + 37, 70, sigY + 37);
 
-      doc.text(latestSetoran?.penerima || 'Pengurus Ridho OK', 150, sigY + 35, { align: 'center' });
+      doc.text(latestSetoran?.penerima || 'Pengurus Ridho Ok Qurban', 150, sigY + 35, { align: 'center' });
       doc.line(130, sigY + 37, 170, sigY + 37);
 
       // Footer
@@ -435,7 +435,7 @@ export const KwitansiModal: React.FC<KwitansiModalProps> = ({
               </div>
 
               <div className="font-bold text-slate-900 border-b border-slate-400 inline-block px-6 pb-0.5">
-                {latestSetoran?.penerima || 'Ust. Ridwan (Bendahara)'}
+                {latestSetoran?.penerima || 'Pengurus Ridho Ok Qurban'}
               </div>
             </div>
           </div>

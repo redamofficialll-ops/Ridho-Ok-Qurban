@@ -59,6 +59,10 @@ export interface AppSettings {
   authorizedGoogleEmail?: string;
   lastSheetsSyncTime?: string;
   isSheetsLocked?: boolean;
+  supabaseUrl?: string;
+  supabaseAnonKey?: string;
+  supabaseConnected?: boolean;
+  lastSupabaseSyncTime?: string;
 }
 
 export interface SummaryStats {

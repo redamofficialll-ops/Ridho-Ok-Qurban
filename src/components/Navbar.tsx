@@ -1,8 +1,9 @@
 import React from 'react';
 import { LogoEmblem } from './LogoEmblem';
-import { Shield, ShieldAlert, RefreshCw, FileSpreadsheet, Tag, Settings, LogOut, Lock, KeyRound, CheckCircle2 } from 'lucide-react';
+import { Shield, ShieldAlert, RefreshCw, FileSpreadsheet, Tag, Settings, LogOut, Lock, KeyRound, CheckCircle2, Database } from 'lucide-react';
 import { AppSettings, ActiveAdminSession } from '../types/qurban';
 import { PWAInstallButton } from './PWAInstallButton';
+import { WA_CHAT_URL, WhatsAppIcon } from './WhatsAppChatButton';
 
 interface NavbarProps {
   settings: AppSettings;
@@ -14,6 +15,7 @@ interface NavbarProps {
   onOpenSettings: () => void;
   onOpenVarianKambing: () => void;
   onOpenAppsScript: () => void;
+  onOpenSupabase?: () => void;
   onRefresh: () => void;
   isRefreshing: boolean;
   lastUpdatedTime: string;
@@ -34,7 +36,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   lastUpdatedTime
 }) => {
   return (
-    <header className="sticky top-0 z-40 bg-[#0A192F] border-b border-[#D4AF37]/30 shadow-xl text-[#FAF8F5]">
+    <header className="relative z-40 bg-[#0A192F] border-b border-[#D4AF37]/30 shadow-xl text-[#FAF8F5]">
       {/* Top Banner Ribbon */}
       <div className="bg-gradient-to-r from-[#1E293B] via-[#0F172A] to-[#1E293B] border-b border-[#D4AF37]/20 px-4 py-1 text-xs">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2 text-[#FAF8F5]/80">
@@ -81,8 +83,25 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Action Controls */}
         <div className="flex items-center flex-wrap gap-2 sm:gap-3">
-          {/* Download App di Android Button */}
-          <PWAInstallButton />
+          {/* Download App & Chat WhatsApp Button - Hanya tampil pada Mode Peserta/Publik, disembunyikan di Mode Pengurus */}
+          {!isAdmin && (
+            <>
+              {/* Download App di Android Button */}
+              <PWAInstallButton />
+
+              {/* Hubungi WhatsApp Button */}
+              <a
+                href={WA_CHAT_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#25D366] hover:bg-[#20bd5a] text-white shadow-sm transition active:scale-95 border border-white/20"
+                title="Hubungi Admin di WhatsApp: 087874586603"
+              >
+                <WhatsAppIcon className="w-3.5 h-3.5 shrink-0" />
+                <span>Chat WhatsApp</span>
+              </a>
+            </>
+          )}
 
           {/* Varian Harga Kambing Button */}
           <button
@@ -115,12 +134,30 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
           </button>
 
+          {/* Database Supabase Button (Hanya Pengurus) */}
+          {isAdmin && onOpenSupabase && (
+            <button
+              onClick={onOpenSupabase}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-300 transition shadow-sm"
+              title="Kelola Database Supabase PostgreSQL"
+            >
+              <Database className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Database Supabase</span>
+              {settings.supabaseConnected && (
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              )}
+            </button>
+          )}
+
           {/* Pengurus / Admin Access */}
           {isAdmin ? (
             <div className="flex items-center gap-2 bg-[#1E293B] border border-amber-500/50 rounded-lg p-1 pl-2.5 shadow-md">
               <div className="flex items-center gap-1.5 text-xs text-amber-300 font-medium">
                 <Shield className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 <span className="font-bold text-[#D4AF37]">{activePengurus?.nama || 'Pengurus Aktif'}</span>
+                <span className="hidden sm:inline-block text-[10px] bg-amber-400/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-400/30 font-bold">
+                  Mode Pengurus
+                </span>
               </div>
               <button
                 onClick={onOpenLogin}
@@ -139,7 +176,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 onClick={onLogoutAdmin}
                 className="flex items-center gap-1 px-2 py-1 rounded bg-red-950/70 hover:bg-red-900 border border-red-500/40 text-red-200 text-xs transition"
-                title="Keluar Mode Pengurus"
+                title="Keluar Mode Pengurus (Kembali ke Mode Peserta)"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Keluar</span>
@@ -149,6 +186,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               onClick={onOpenLogin}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-gradient-to-r from-[#D4AF37] to-[#B8860B] hover:from-[#E5C07B] hover:to-[#C59B27] text-[#0A192F] transition shadow-md shadow-[#D4AF37]/20 active:scale-95"
+              title="Masuk ke Mode Pengurus untuk melihat dan mengelola Laporan & Daftar Peserta"
             >
               <ShieldAlert className="w-3.5 h-3.5 text-[#0A192F]" />
               <span>Masuk Pengurus</span>

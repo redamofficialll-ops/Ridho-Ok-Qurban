@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Peserta, HARGA_KAMBING_OPTIONS, formatRupiah } from '../types/qurban';
+import { Peserta, HARGA_KAMBING_OPTIONS, VarianKambingOption, formatRupiah } from '../types/qurban';
 import { X, Edit2, MapPin, Phone, Heart, Check, AlertCircle } from 'lucide-react';
 
 interface ModalEditPesertaProps {
@@ -7,14 +7,17 @@ interface ModalEditPesertaProps {
   onClose: () => void;
   peserta: Peserta | null;
   onUpdatePeserta: (pesertaId: string, payload: any) => Promise<boolean>;
+  varianOptions?: VarianKambingOption[];
 }
 
 export const ModalEditPeserta: React.FC<ModalEditPesertaProps> = ({
   isOpen,
   onClose,
   peserta,
-  onUpdatePeserta
+  onUpdatePeserta,
+  varianOptions = []
 }) => {
+  const optionsToUse = varianOptions.length > 0 ? varianOptions : HARGA_KAMBING_OPTIONS;
   const [nama, setNama] = useState('');
   const [alamat, setAlamat] = useState('');
   const [noHp, setNoHp] = useState('');
@@ -33,13 +36,13 @@ export const ModalEditPeserta: React.FC<ModalEditPesertaProps> = ({
       setAlamat(peserta.alamat || '');
       setNoHp(peserta.noHp || '');
       // If codeVarian is available, use it, otherwise map harga to kode
-      setVarianKode(peserta.kodeVarian || HARGA_KAMBING_OPTIONS.find(o => o.value === peserta.varianHarga)?.kode || HARGA_KAMBING_OPTIONS[0]?.kode || '');
+      setVarianKode(peserta.kodeVarian || optionsToUse.find(o => o.value === peserta.varianHarga)?.kode || optionsToUse[0]?.kode || '');
       setCatatanNiat(peserta.catatanNiat || '');
       setTanggalDaftar(peserta.tanggalDaftar || '');
     } else if (!peserta) {
       previousPesertaId.current = null;
     }
-  }, [peserta]);
+  }, [peserta, optionsToUse]);
 
   if (!isOpen || !peserta) return null;
 
@@ -57,7 +60,7 @@ export const ModalEditPeserta: React.FC<ModalEditPesertaProps> = ({
     setIsLoading(true);
     setErrorMsg('');
 
-    const selectedVarian = HARGA_KAMBING_OPTIONS.find(o => o.kode === varianKode);
+    const selectedVarian = optionsToUse.find(o => o.kode === varianKode);
     const payload = {
       nama: nama.trim(),
       alamat: alamat.trim(),
@@ -75,7 +78,7 @@ export const ModalEditPeserta: React.FC<ModalEditPesertaProps> = ({
     }
   };
 
-  const selectedTier = HARGA_KAMBING_OPTIONS.find(o => o.kode === varianKode);
+  const selectedTier = optionsToUse.find(o => o.kode === varianKode);
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5">
@@ -217,7 +220,7 @@ export const ModalEditPeserta: React.FC<ModalEditPesertaProps> = ({
               }}
               className="w-full px-3.5 py-2.5 text-xs rounded-xl border-2 border-[#D4AF37] bg-amber-50/50 font-bold text-[#0A192F] focus:outline-none focus:ring-2 focus:ring-[#B8860B]"
             >
-              {HARGA_KAMBING_OPTIONS.map((item) => (
+              {optionsToUse.map((item) => (
                 <option key={item.kode} value={item.kode}>
                   {item.label} — {item.grade}
                 </option>

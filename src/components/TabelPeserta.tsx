@@ -43,7 +43,7 @@ export const TabelPeserta: React.FC<TabelPesertaProps> = ({
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'Semua' | 'Lunas' | 'Dalam Proses'>('Semua');
-  const [viewMode, setViewMode] = useState<'tabel' | 'kartu'>('tabel');
+  const [viewMode, setViewMode] = useState<'tabel' | 'kartu'>(window.innerWidth < 768 ? 'kartu' : 'tabel');
 
   // Filtered participants
   const filteredPeserta = peserta.filter((p) => {
@@ -71,13 +71,19 @@ export const TabelPeserta: React.FC<TabelPesertaProps> = ({
     return `https://wa.me/${cleanPhone}?text=${text}`;
   };
 
+  // Dalam Mode Peserta (!isAdmin), pop up / tabel laporan disembunyikan (tidak terlihat)
+  // Hanya terlihat saat dalam Mode Pengurus (isAdmin === true)
+  if (!isAdmin) {
+    return null;
+  }
+
   return (
     <div className="bg-white rounded-2xl border border-slate-200/80 shadow-md overflow-hidden">
       {/* Header controls bar */}
       <div className="p-4 sm:p-5 bg-gradient-to-b from-[#FAF8F5] to-white border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-black text-[#0A192F] font-serif-brand flex items-center gap-2">
-            <span>Daftar Peserta & Laporan Tabungan</span>
+            <span style={{ fontFamily: 'Trajan Pro, serif', fontWeight: '700' }}>Daftar Peserta & Laporan Tabungan</span>
             <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#D4AF37]/20 text-[#8C6D23] border border-[#D4AF37]/30">
               {filteredPeserta.length} Peserta
             </span>
