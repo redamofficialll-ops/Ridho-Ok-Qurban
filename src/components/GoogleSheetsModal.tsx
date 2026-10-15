@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User } from 'firebase/auth';
-import { googleSignIn, googleLogout, getAccessToken, initAuth, getSavedGoogleUser } from '../services/googleAuth';
+import { PersistedGoogleUser, googleSignIn, googleLogout, getAccessToken, initAuth, getSavedGoogleUser } from '../services/googleAuth';
 import {
   extractSpreadsheetId,
   fetchSpreadsheetDetails,
@@ -58,7 +57,7 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
   isAdmin,
   onOpenLogin
 }) => {
-  const [googleUser, setGoogleUser] = useState<User | null>(null);
+  const [googleUser, setGoogleUser] = useState<PersistedGoogleUser | null>(null);
   const [isSigningIn, setIsSigningIn] = useState(false);
 
   // Authorized single Google account
