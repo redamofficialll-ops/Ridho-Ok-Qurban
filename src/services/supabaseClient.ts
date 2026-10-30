@@ -1,6 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 
 export function getSupabaseCredentials() {
+  const defaultUrl = 'https://ahiwwauydluqarbqyfwj.supabase.co';
+  const defaultAnonKey = 'sb_publishable_z1svJ8s4sZtMYSUCNuSUfg_13PkD-7n';
+
   try {
     const cached = localStorage.getItem('RIDHO_OK_QURBAN_CACHE');
     if (cached) {
@@ -15,8 +18,8 @@ export function getSupabaseCredentials() {
   } catch {}
 
   return {
-    url: (import.meta as any).env?.VITE_SUPABASE_URL || '',
-    anonKey: (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || ''
+    url: (import.meta as any).env?.VITE_SUPABASE_URL || defaultUrl,
+    anonKey: (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || defaultAnonKey
   };
 }
 
