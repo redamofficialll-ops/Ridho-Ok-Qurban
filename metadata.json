@@ -1,0 +1,7 @@
+{
+  "name": "RIDHO OK QURBAN - Laporan Tabungan Qurban",
+  "description": "Sistem Laporan Keuangan dan Data Tabungan Qurban RIDHO OK QURBAN Real-time dengan target tabungan dan pilihan varian hewan qurban.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
