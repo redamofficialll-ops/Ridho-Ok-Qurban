@@ -647,8 +647,10 @@ async function syncVarianFromGoogleSheet(spreadsheetId: string, force = false): 
   return null;
 }
 
+const apiRouter = express.Router();
+
 // API: Get List of Active Pengurus (Public / Safe)
-app.get('/api/qurban/pengurus', (req, res) => {
+apiRouter.get('/qurban/pengurus', (req, res) => {
   const db = readDb();
   const safePengurus = (db.pengurus || []).map(p => ({
     id: p.id,
@@ -662,7 +664,7 @@ app.get('/api/qurban/pengurus', (req, res) => {
 });
 
 // API: Direct endpoint to sync Varian Kambing from Google Sheets on demand
-app.get('/api/qurban/varian-kambing/sync', async (req, res) => {
+apiRouter.get('/qurban/varian-kambing/sync', async (req, res) => {
   const db = readDb();
   if (db.settings.connectedSpreadsheetId) {
     const updated = await syncVarianFromGoogleSheet(db.settings.connectedSpreadsheetId, true);
@@ -674,7 +676,7 @@ app.get('/api/qurban/varian-kambing/sync', async (req, res) => {
 });
 
 // API: Get all qurban data (Public / Peserta)
-app.get('/api/qurban/data', async (req, res) => {
+apiRouter.get('/qurban/data', async (req, res) => {
   let db = readDb();
   db = await syncFromSupabaseBackend(db);
 
@@ -726,7 +728,7 @@ app.get('/api/qurban/data', async (req, res) => {
 });
 
 // API: Pengurus Login (by username & password, or PIN)
-app.post('/api/qurban/admin/login', (req, res) => {
+apiRouter.post('/qurban/admin/login', (req, res) => {
   const { username, password, pin } = req.body;
   const db = readDb();
 
@@ -815,7 +817,7 @@ app.post('/api/qurban/admin/login', (req, res) => {
 });
 
 // API: Ubah Kata Sandi Pengurus
-app.post('/api/qurban/pengurus/change-password', (req, res) => {
+apiRouter.post('/qurban/pengurus/change-password', (req, res) => {
   const { username, oldPassword, newPassword } = req.body;
 
   if (!username || !newPassword) {
@@ -888,7 +890,7 @@ function checkAdminAuth(req: express.Request, res: express.Response, next: expre
 }
 
 // API: Tambah Peserta Baru (Pengurus Only)
-app.post('/api/qurban/peserta', checkAdminAuth, async (req, res) => {
+apiRouter.post('/qurban/peserta', checkAdminAuth, async (req, res) => {
   const { nama, alamat, noHp, varianHarga, kodeVarian, catatanNiat, tanggalDaftar, setoranAwal, metodeSetoranAwal, penerima } = req.body;
   
   if (!nama || !alamat || !varianHarga) {
@@ -949,7 +951,7 @@ app.post('/api/qurban/peserta', checkAdminAuth, async (req, res) => {
 });
 
 // API: Edit Data Peserta (Pengurus Only)
-app.put('/api/qurban/peserta/:id', checkAdminAuth, async (req, res) => {
+apiRouter.put('/qurban/peserta/:id', checkAdminAuth, async (req, res) => {
   const { id } = req.params;
   const { nama, alamat, noHp, varianHarga, catatanNiat, tanggalDaftar } = req.body;
   const db = readDb();
@@ -982,7 +984,7 @@ app.put('/api/qurban/peserta/:id', checkAdminAuth, async (req, res) => {
 });
 
 // API: Catat Setoran / Pembayaran Cicilan (Pengurus Only)
-app.post('/api/qurban/peserta/:id/setoran', checkAdminAuth, async (req, res) => {
+apiRouter.post('/qurban/peserta/:id/setoran', checkAdminAuth, async (req, res) => {
   const { id } = req.params;
   const { jumlah, tanggal, metode, keterangan, penerima } = req.body;
 
@@ -1032,7 +1034,7 @@ app.post('/api/qurban/peserta/:id/setoran', checkAdminAuth, async (req, res) => 
 });
 
 // API: Update Setoran (Pengurus Only)
-app.put('/api/qurban/peserta/:id/setoran/:setoranId', checkAdminAuth, async (req, res) => {
+apiRouter.put('/qurban/peserta/:id/setoran/:setoranId', checkAdminAuth, async (req, res) => {
   const { id, setoranId } = req.params;
   const { jumlah, tanggal, metode, keterangan, penerima } = req.body;
   const db = readDb();
@@ -1064,7 +1066,7 @@ app.put('/api/qurban/peserta/:id/setoran/:setoranId', checkAdminAuth, async (req
 });
 
 // API: Hapus Setoran (Pengurus Only)
-app.delete('/api/qurban/peserta/:id/setoran/:setoranId', checkAdminAuth, async (req, res) => {
+apiRouter.delete('/qurban/peserta/:id/setoran/:setoranId', checkAdminAuth, async (req, res) => {
   const { id, setoranId } = req.params;
   const db = readDb();
   const idx = db.peserta.findIndex(p => p.id === id);
@@ -1090,7 +1092,7 @@ app.delete('/api/qurban/peserta/:id/setoran/:setoranId', checkAdminAuth, async (
 });
 
 // API: Hapus Peserta (Pengurus Only)
-app.delete('/api/qurban/peserta/:id', checkAdminAuth, async (req, res) => {
+apiRouter.delete('/qurban/peserta/:id', checkAdminAuth, async (req, res) => {
   const { id } = req.params;
   const db = readDb();
   const filtered = db.peserta.filter(p => p.id !== id);
@@ -1103,7 +1105,7 @@ app.delete('/api/qurban/peserta/:id', checkAdminAuth, async (req, res) => {
 });
 
 // API: Bulk Sync peserta (e.g. from Google Sheets)
-app.post('/api/qurban/peserta/bulk-sync', async (req, res) => {
+apiRouter.post('/qurban/peserta/bulk-sync', async (req, res) => {
   const { peserta: newPesertaList } = req.body;
   if (!Array.isArray(newPesertaList)) {
     return res.status(400).json({ success: false, message: 'Data peserta tidak valid' });
@@ -1115,7 +1117,7 @@ app.post('/api/qurban/peserta/bulk-sync', async (req, res) => {
 });
 
 // API: Update Pengaturan & PIN (Pengurus Only)
-app.post('/api/qurban/settings', checkAdminAuth, async (req, res) => {
+apiRouter.post('/qurban/settings', checkAdminAuth, async (req, res) => {
   const { settings } = req.body;
   if (!settings) return res.status(400).json({ success: false, message: 'Data pengaturan kosong' });
 
@@ -1133,7 +1135,7 @@ app.post('/api/qurban/settings', checkAdminAuth, async (req, res) => {
 });
 
 // API: Update Varian Kambing
-app.post('/api/qurban/varian-kambing', async (req, res) => {
+apiRouter.post('/qurban/varian-kambing', async (req, res) => {
   const { varianKambing } = req.body;
   if (!Array.isArray(varianKambing) || varianKambing.length === 0) return res.status(400).json({ success: false, message: 'Data varian tidak valid' });
 
@@ -1146,7 +1148,7 @@ app.post('/api/qurban/varian-kambing', async (req, res) => {
 });
 
 // API: Export CSV format
-app.get('/api/qurban/export/csv', (req, res) => {
+apiRouter.get('/qurban/export/csv', (req, res) => {
   const db = readDb();
   let csv = 'No,Kode Peserta,Nama Peserta,Alamat Lengkap,No WhatsApp,Varian Kambing,Target Biaya (Rp),Total Terkumpul (Rp),Sisa Target (Rp),Status,Persentase,Jumlah Kali Setor,Tanggal Daftar,Catatan Niat\n';
 
@@ -1167,7 +1169,7 @@ app.get('/api/qurban/export/csv', (req, res) => {
 });
 
 // API: Google Apps Script Webhook sync endpoint
-app.post('/api/qurban/sync-apps-script', (req, res) => {
+apiRouter.post('/qurban/sync-apps-script', (req, res) => {
   const body = req.body;
   const db = readDb();
   // Support both incoming data push from Google Sheet or webhook ping
@@ -1178,6 +1180,10 @@ app.post('/api/qurban/sync-apps-script', (req, res) => {
     timestamp: new Date().toISOString()
   });
 });
+
+// Mount API router for both '/api' prefix and root '/' (to handle Vercel serverless function path rewrites seamlessly)
+app.use('/api', apiRouter);
+app.use('/', apiRouter);
 
 async function startServer() {
   const isDev = process.env.NODE_ENV !== 'production';
