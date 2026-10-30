@@ -34,6 +34,17 @@ export interface Pengurus {
   terakhirLogin?: string;
 }
 
+export interface PengurusAccount {
+  id: string;
+  username: string;
+  nama: string;
+  password?: string;
+  role: string;
+  status: 'Aktif' | 'Nonaktif';
+  terakhirLogin?: string | null;
+  passwordChanged?: boolean;
+}
+
 export interface ActiveAdminSession {
   id: string;
   username: string;
@@ -61,6 +72,7 @@ export interface AppSettings {
   isSheetsLocked?: boolean;
   supabaseUrl?: string;
   supabaseAnonKey?: string;
+  supabaseConnected?: boolean;
 }
 
 export interface SummaryStats {

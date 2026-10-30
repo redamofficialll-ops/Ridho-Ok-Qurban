@@ -14,7 +14,9 @@
     "connectedSpreadsheetTitle": "Laporan Tabungan Qurban Ridho Ok Qurban",
     "autoSyncSheets": true,
     "isSheetsLocked": true,
-    "lastSheetsSyncTime": "2026-10-13T16:14:06.930Z"
+    "lastSheetsSyncTime": "2026-10-13T16:14:06.930Z",
+    "supabaseUrl": "https://ahiwwauydluqarbqyfwj.supabase.co",
+    "supabaseAnonKey": "sb_publishable_z1svJ8s4sZtMYSUCNuSUfg_13PkD-7n"
   },
   "peserta": [
     {

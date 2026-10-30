@@ -144,6 +144,9 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Database className="w-3.5 h-3.5 text-emerald-400" />
               <span>Database Supabase</span>
+              {settings.supabaseConnected && (
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              )}
             </button>
           )}
 

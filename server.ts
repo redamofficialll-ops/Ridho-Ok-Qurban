@@ -3,18 +3,23 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { updateServerSupabaseCredentials, supabaseServer } from './src/services/serverSupabase';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DATA_DIR = path.resolve(__dirname, 'data');
+const DATA_DIR = process.env.VERCEL ? path.resolve('/tmp', 'data') : path.resolve(__dirname, 'data');
 const DB_FILE = path.resolve(DATA_DIR, 'qurban_db.json');
 
 // Ensure data folder exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+} catch (e) {
+  console.warn('Notice creating DATA_DIR:', e);
 }
 
 // 12 Varian Harga Kambing sesuai kesepakatan & ketulusan niat
@@ -167,7 +172,9 @@ const defaultInitialData: DatabaseSchema = {
     appsScriptWebhookUrl: '',
     kontakPengurus: '087874586603',
     rekeningTujuan: 'Bank Syariah Indonesia (BSI) 7788990011 a.n. Tabungan Qurban Ridho',
-    authorizedGoogleEmail: 'redamofficialll@gmail.com'
+    authorizedGoogleEmail: 'redamofficialll@gmail.com',
+    supabaseUrl: 'https://ahiwwauydluqarbqyfwj.supabase.co',
+    supabaseAnonKey: 'sb_publishable_z1svJ8s4sZtMYSUCNuSUfg_13PkD-7n'
   },
   pengurus: default5Pengurus,
   varianKambing: HARGA_KAMBING_OPTIONS,
@@ -339,23 +346,129 @@ const defaultInitialData: DatabaseSchema = {
 
 function readDb(): DatabaseSchema {
   try {
-    if (fs.existsSync(DB_FILE)) {
-      const content = fs.readFileSync(DB_FILE, 'utf-8');
-      return JSON.parse(content) as DatabaseSchema;
+    if (!fs.existsSync(DB_FILE)) {
+      fs.writeFileSync(DB_FILE, JSON.stringify(defaultInitialData, null, 2), 'utf-8');
+      return defaultInitialData;
+    }
+    const content = fs.readFileSync(DB_FILE, 'utf-8');
+    const parsed: DatabaseSchema = JSON.parse(content);
+    if (!parsed.settings) {
+      parsed.settings = defaultInitialData.settings;
+    }
+    if (!parsed.peserta) {
+      parsed.peserta = defaultInitialData.peserta;
+    }
+    if (!parsed.pengurus || !Array.isArray(parsed.pengurus) || parsed.pengurus.length === 0) {
+      parsed.pengurus = default5Pengurus;
+      writeDb(parsed);
+    } else {
+      let changed = false;
+      default5Pengurus.forEach(def => {
+        const found = parsed.pengurus?.find(p => p.username.toLowerCase() === def.username.toLowerCase());
+        if (!found) {
+          parsed.pengurus?.push(def);
+          changed = true;
+        }
+      });
+      if (changed) writeDb(parsed);
+    }
+    return parsed;
+  } catch (err) {
+    console.error('Error reading db:', err);
+    return defaultInitialData;
+  }
+}
+
+async function syncToSupabaseBackend(db: DatabaseSchema) {
+  try {
+    const url = (db.settings?.supabaseUrl || process.env.VITE_SUPABASE_URL || '').trim();
+    const key = (db.settings?.supabaseAnonKey || process.env.VITE_SUPABASE_ANON_KEY || '').trim();
+    if (!url || !key || !url.startsWith('https://')) return;
+
+    updateServerSupabaseCredentials(url, key);
+
+    // Sync app_settings
+    await supabaseServer.from('app_settings').upsert({
+      id: 'main_settings',
+      nama_program: db.settings.namaProgram,
+      nama_lembaga: db.settings.namaLembaga,
+      target_idul_adha: db.settings.targetIdulAdha,
+      tahun_hijriyah: db.settings.tahunHijriyah,
+      tahun_masehi: db.settings.tahunMasehi,
+      kontak_pengurus: db.settings.kontakPengurus,
+      rekening_tujuan: db.settings.rekeningTujuan,
+      admin_pin: db.settings.adminPin || '1234',
+      connected_spreadsheet_id: db.settings.connectedSpreadsheetId || '',
+      authorized_google_email: db.settings.authorizedGoogleEmail || 'redamofficialll@gmail.com',
+      updated_at: new Date().toISOString()
+    });
+
+    // Sync varian_kambing
+    if (db.varianKambing && db.varianKambing.length > 0) {
+      await supabaseServer.from('varian_kambing').upsert(
+        db.varianKambing.map(v => ({
+          kode: v.kode,
+          value: v.value,
+          label: v.label,
+          grade: v.grade,
+          deskripsi: v.deskripsi
+        }))
+      );
+    }
+
+    // Sync pengurus
+    if (db.pengurus && db.pengurus.length > 0) {
+      await supabaseServer.from('pengurus').upsert(
+        db.pengurus.map(p => ({
+          id: p.id,
+          username: p.username,
+          nama: p.nama,
+          password: p.password,
+          role: p.role,
+          status: p.status
+        }))
+      );
+    }
+
+    // Sync peserta
+    if (db.peserta && db.peserta.length > 0) {
+      await supabaseServer.from('peserta').upsert(
+        db.peserta.map(p => ({
+          id: p.id,
+          kode_peserta: p.kodePeserta,
+          nama: p.nama,
+          alamat: p.alamat,
+          no_hp: p.noHp,
+          varian_harga: p.varianHarga,
+          nama_varian: p.namaVarian,
+          kode_varian: p.kodeVarian,
+          target_kurban: p.targetKurban,
+          total_terkumpul: p.totalTerkumpul,
+          status: p.status,
+          tanggal_daftar: p.tanggalDaftar,
+          catatan_niat: p.catatanNiat || '',
+          riwayat_setoran: p.riwayatSetoran || [],
+          updated_at: new Date().toISOString()
+        }))
+      );
     }
   } catch (err) {
-    console.error('Error reading local DB file:', err);
+    console.warn('Backend Supabase sync notice:', err);
   }
-  return defaultInitialData;
 }
 
 function writeDb(data: DatabaseSchema): boolean {
   try {
     data.lastUpdated = new Date().toISOString();
-    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf-8');
+    const tempFile = `${DB_FILE}.tmp`;
+    fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), 'utf-8');
+    fs.renameSync(tempFile, DB_FILE);
+    
+    // Background sync to connected Supabase Cloud database
+    syncToSupabaseBackend(data).catch(() => {});
     return true;
   } catch (err) {
-    console.error('Error writing local DB file:', err);
+    console.error('Error writing db:', err);
     return false;
   }
 }
@@ -1024,4 +1137,9 @@ async function startServer() {
   }
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export default app;
+export { app };

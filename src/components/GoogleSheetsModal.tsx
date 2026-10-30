@@ -168,14 +168,16 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
 
         const files = await listDriveSheets(res.accessToken);
         setExistingSheets(files);
+      } else {
+        // User closed the popup window
+        setStatusMessage(null);
       }
     } catch (err: any) {
-      if (err.message === 'AUTH_EXPIRED') {
+      if (err?.message === 'AUTH_EXPIRED') {
         await handleLogout();
         setStatusMessage({ type: 'error', text: 'Sesi Google Anda telah berakhir. Silakan masuk kembali.' });
       } else {
-        console.error(err);
-        setStatusMessage({ type: 'error', text: err.message || 'Gagal masuk dengan Google.' });
+        setStatusMessage({ type: 'error', text: err?.message || 'Gagal masuk dengan Google.' });
       }
     } finally {
       setIsSigningIn(false);
@@ -298,7 +300,15 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
     }
 
     try {
-      const token = await getAccessToken();
+      let token = await getAccessToken();
+      if (!token) {
+        const res = await googleSignIn(settings.authorizedGoogleEmail || defaultAuthorizedEmail);
+        if (res) {
+          token = res.accessToken;
+          setGoogleUser(res.user);
+        }
+      }
+
       if (!token) {
         setStatusMessage({ type: 'error', text: 'Silakan masuk dengan akun Google terlebih dahulu.' });
         return;
@@ -354,17 +364,22 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
     }
 
     try {
-      const token = await getAccessToken();
-      if (!token) {
-        setStatusMessage({ type: 'error', text: 'Silakan masuk dengan akun Google terlebih dahulu.' });
-        return;
-      }
-
       setIsPulling(true);
       setStatusMessage(null);
 
-      const details = await fetchSpreadsheetDetails(token, connectedId);
-      const imported = await readSheetData(token, connectedId, details.sheetName);
+      let token = await getAccessToken();
+      let activeUser = googleUser;
+      if (!token || !activeUser) {
+        const res = await googleSignIn(settings.authorizedGoogleEmail || defaultAuthorizedEmail);
+        if (res) {
+          setGoogleUser(res.user);
+          activeUser = res.user;
+          token = res.accessToken;
+        }
+      }
+
+      const details = await fetchSpreadsheetDetails(token || 'active', connectedId);
+      const imported = await readSheetData(token || 'active', connectedId, details.sheetName);
 
       if (imported.length === 0) {
         setStatusMessage({
@@ -376,9 +391,8 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
           onUpdatePesertaFromSheets(imported);
         }
         
-        // Also pull and sync latest Varian_Kambing options from spreadsheet
         try {
-          const variants = await readVarianKambingSheet(token, connectedId);
+          const variants = await readVarianKambingSheet(token || 'active', connectedId);
           if (variants && variants.length > 0) {
             await fetch('/api/qurban/varian-kambing', {
               method: 'POST',
@@ -390,19 +404,11 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
 
         setStatusMessage({
           type: 'success',
-          text: `Berhasil membaca & mengimpor ${imported.length} peserta dan menyinkronkan 12 Varian Kambing dari spreadsheet!`
+          text: `Berhasil menarik & mengimpor ${imported.length} peserta terbaru dan menyinkronkan Varian Kambing dari spreadsheet!`
         });
       }
     } catch (err: any) {
-      if (err.message === 'AUTH_EXPIRED') {
-        await handleLogout();
-        setStatusMessage({ 
-          type: 'error', 
-          text: 'Sesi Google Anda telah berakhir. Silakan klik "Sign in with Google" untuk masuk kembali.' 
-        });
-      } else {
-        setStatusMessage({ type: 'error', text: err.message || 'Gagal membaca data dari Google Spreadsheet.' });
-      }
+      setStatusMessage({ type: 'error', text: err.message || 'Gagal membaca data dari Google Spreadsheet.' });
     } finally {
       setIsPulling(false);
     }

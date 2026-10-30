@@ -16,15 +16,13 @@ import { ModalDetailPeserta } from './components/ModalDetailPeserta';
 import { KwitansiModal } from './components/KwitansiModal';
 import { ModalEditPeserta } from './components/ModalEditPeserta';
 import { ModalSettings } from './components/ModalSettings';
-import { SupabaseModal } from './components/SupabaseModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { SyaratKetentuanCard } from './components/SyaratKetentuanCard';
 import { WA_CHAT_URL, WA_PHONE, WhatsAppIcon } from './components/WhatsAppChatButton';
-import { PWAInstallButton } from './components/PWAInstallButton';
 import { Peserta, AppSettings, SummaryStats, HARGA_KAMBING_OPTIONS, VarianKambingOption, formatRupiah, ActiveAdminSession } from './types/qurban';
-import { Tag, ArrowRight, FileSpreadsheet, Lock, Smartphone } from 'lucide-react';
-import { getAccessToken, getSavedGoogleUser } from './services/googleAuth';
-import { fetchSpreadsheetDetails, populateSheetData, populateRiwayatSetoranSheet } from './services/googleSheets';
+import { Tag, ArrowRight, FileSpreadsheet, Lock } from 'lucide-react';
+import { getAccessToken, initAuth, getSavedGoogleUser } from './services/googleAuth';
+import { fetchSpreadsheetDetails, populateSheetData, readVarianKambingSheet, populateRiwayatSetoranSheet } from './services/googleSheets';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -66,14 +64,56 @@ export default function App() {
     return !!localStorage.getItem(ACTIVE_PENGURUS_KEY) || !!sessionStorage.getItem(ADMIN_PIN_KEY);
   });
 
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdatedTime, setLastUpdatedTime] = useState<string>('');
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Modals state
+  const [isVarianModalOpen, setIsVarianModalOpen] = useState(false);
+  const [isAppsScriptModalOpen, setIsAppsScriptModalOpen] = useState(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [isTambahPesertaModalOpen, setIsTambahPesertaModalOpen] = useState(false);
+  const [isSetorModalOpen, setIsSetorModalOpen] = useState(false);
+  const [selectedPesertaForSetor, setSelectedPesertaForSetor] = useState<Peserta | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [selectedPesertaForDetail, setSelectedPesertaForDetail] = useState<Peserta | null>(null);
+  const [isKwitansiModalOpen, setIsKwitansiModalOpen] = useState(false);
+  const [selectedPesertaForKwitansi, setSelectedPesertaForKwitansi] = useState<Peserta | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedPesertaForEdit, setSelectedPesertaForEdit] = useState<Peserta | null>(null);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [presetVariantForRegister, setPresetVariantForRegister] = useState<number>(4500000);
+  const [varianOptions, setVarianOptions] = useState<VarianKambingOption[]>(HARGA_KAMBING_OPTIONS);
+
+  const [adminPin, setAdminPin] = useState<string>(() => {
+    return sessionStorage.getItem(ADMIN_PIN_KEY) || '1234';
+  });
+
   const [googleEmailConnected, setGoogleEmailConnected] = useState<string | null>(() => {
     const saved = getSavedGoogleUser();
     return saved?.email || null;
   });
 
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [lastUpdatedTime, setLastUpdatedTime] = useState<string>('');
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  useEffect(() => {
+    const unsubscribe = initAuth(
+      (user) => {
+        if (user && user.email) {
+          setGoogleEmailConnected(user.email);
+        }
+      },
+      () => {
+        const saved = getSavedGoogleUser();
+        if (saved?.email) {
+          setGoogleEmailConnected(saved.email);
+        } else {
+          setGoogleEmailConnected(null);
+        }
+      }
+    );
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
 
   // Background Google Spreadsheet Sync
   const syncToConnectedSheet = async (list: Peserta[]) => {
@@ -106,28 +146,6 @@ export default function App() {
       console.error('Error importing from sheets:', err);
     }
   };
-
-  // Modals state
-  const [isVarianModalOpen, setIsVarianModalOpen] = useState(false);
-  const [isAppsScriptModalOpen, setIsAppsScriptModalOpen] = useState(false);
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
-  const [isTambahPesertaModalOpen, setIsTambahPesertaModalOpen] = useState(false);
-  const [isSetorModalOpen, setIsSetorModalOpen] = useState(false);
-  const [selectedPesertaForSetor, setSelectedPesertaForSetor] = useState<Peserta | null>(null);
-  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  const [selectedPesertaForDetail, setSelectedPesertaForDetail] = useState<Peserta | null>(null);
-  const [isKwitansiModalOpen, setIsKwitansiModalOpen] = useState(false);
-  const [selectedPesertaForKwitansi, setSelectedPesertaForKwitansi] = useState<Peserta | null>(null);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [selectedPesertaForEdit, setSelectedPesertaForEdit] = useState<Peserta | null>(null);
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
-  const [presetVariantForRegister, setPresetVariantForRegister] = useState<number>(4500000);
-  const [varianOptions, setVarianOptions] = useState<VarianKambingOption[]>(HARGA_KAMBING_OPTIONS);
-
-  const [adminPin, setAdminPin] = useState<string>(() => {
-    return sessionStorage.getItem(ADMIN_PIN_KEY) || '1234';
-  });
 
   // Load from API with localStorage fallback
   const fetchData = useCallback(async (isSilent = false): Promise<Peserta[]> => {
@@ -498,7 +516,6 @@ export default function App() {
         onOpenSettings={() => setIsSettingsModalOpen(true)}
         onOpenVarianKambing={() => setIsVarianModalOpen(true)}
         onOpenAppsScript={() => setIsAppsScriptModalOpen(true)}
-        onOpenSupabase={() => setIsSupabaseModalOpen(true)}
         onRefresh={() => fetchData(false)}
         isRefreshing={isRefreshing}
         lastUpdatedTime={lastUpdatedTime}
@@ -554,7 +571,6 @@ export default function App() {
 
         {/* KPI & Header Statistics */}
         <StatsOverview summary={summary} settings={settings} />
-
 
         {/* 12 Varian Kambing Ribbon Showcase */}
         <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-4 sm:p-5">
@@ -784,15 +800,6 @@ export default function App() {
         onClose={() => setIsSettingsModalOpen(false)}
         settings={settings}
         onSaveSettings={handleSaveSettings}
-      />
-
-      {/* 10. Supabase Modal */}
-      <SupabaseModal
-        isOpen={isSupabaseModalOpen}
-        onClose={() => setIsSupabaseModalOpen(false)}
-        settings={settings}
-        onSaveSettings={handleSaveSettings}
-        isAdmin={isAdmin}
       />
 
       {/* Offline Status Toast */}
