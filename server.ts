@@ -457,24 +457,92 @@ async function syncToSupabaseBackend(db: DatabaseSchema) {
   }
 }
 
+async function syncFromSupabaseBackend(db: DatabaseSchema): Promise<DatabaseSchema> {
+  try {
+    const url = (db.settings?.supabaseUrl || process.env.VITE_SUPABASE_URL || '').trim();
+    const key = (db.settings?.supabaseAnonKey || process.env.VITE_SUPABASE_ANON_KEY || '').trim();
+    if (!url || !key || !url.startsWith('https://')) return db;
+
+    updateServerSupabaseCredentials(url, key);
+
+    // Read peserta from Supabase Cloud
+    const { data: supaPeserta, error: pErr } = await supabaseServer.from('peserta').select('*');
+    if (!pErr && Array.isArray(supaPeserta) && supaPeserta.length > 0) {
+      db.peserta = supaPeserta.map((r: any) => ({
+        id: r.id,
+        kodePeserta: r.kode_peserta,
+        nama: r.nama,
+        alamat: r.alamat,
+        noHp: r.no_hp || '-',
+        varianHarga: Number(r.varian_harga),
+        namaVarian: r.nama_varian,
+        kodeVarian: r.kode_varian,
+        targetKurban: Number(r.target_kurban),
+        totalTerkumpul: Number(r.total_terkumpul || 0),
+        status: r.status || 'Dalam Proses',
+        tanggalDaftar: r.tanggal_daftar,
+        catatanNiat: r.catatan_niat || '',
+        riwayatSetoran: Array.isArray(r.riwayat_setoran) ? r.riwayat_setoran : []
+      }));
+    }
+
+    // Read app_settings from Supabase Cloud
+    const { data: supaSettings, error: sErr } = await supabaseServer.from('app_settings').select('*').limit(1);
+    if (!sErr && Array.isArray(supaSettings) && supaSettings.length > 0) {
+      const s = supaSettings[0];
+      db.settings = {
+        ...db.settings,
+        namaProgram: s.nama_program || db.settings.namaProgram,
+        namaLembaga: s.nama_lembaga || db.settings.namaLembaga,
+        targetIdulAdha: s.target_idul_adha || db.settings.targetIdulAdha,
+        tahunHijriyah: s.tahun_hijriyah || db.settings.tahunHijriyah,
+        tahunMasehi: s.tahun_masehi || db.settings.tahunMasehi,
+        kontakPengurus: s.kontak_pengurus || db.settings.kontakPengurus,
+        rekeningTujuan: s.rekening_tujuan || db.settings.rekeningTujuan,
+        connectedSpreadsheetId: s.connected_spreadsheet_id || db.settings.connectedSpreadsheetId,
+        authorizedGoogleEmail: s.authorized_google_email || db.settings.authorizedGoogleEmail
+      };
+    }
+  } catch (err) {
+    console.warn('Notice reading from Supabase backend:', err);
+  }
+  return db;
+}
+
 function writeDb(data: DatabaseSchema): boolean {
   try {
     data.lastUpdated = new Date().toISOString();
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
     const tempFile = `${DB_FILE}.tmp`;
     fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), 'utf-8');
     fs.renameSync(tempFile, DB_FILE);
-    
-    // Background sync to connected Supabase Cloud database
-    syncToSupabaseBackend(data).catch(() => {});
-    return true;
-  } catch (err) {
-    console.error('Error writing db:', err);
-    return false;
-  }
+  } catch (err) {}
+  
+  // Background sync to connected Supabase Cloud database
+  syncToSupabaseBackend(data).catch(() => {});
+  return true;
+}
+
+async function writeDbAsync(data: DatabaseSchema): Promise<boolean> {
+  writeDb(data);
+  await syncToSupabaseBackend(data);
+  return true;
 }
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-admin-pin, x-admin-username');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
 
 // Helper function to parse CSV formatted text robustly
 function parseCsv(csvText: string): string[][] {
@@ -608,6 +676,7 @@ app.get('/api/qurban/varian-kambing/sync', async (req, res) => {
 // API: Get all qurban data (Public / Peserta)
 app.get('/api/qurban/data', async (req, res) => {
   let db = readDb();
+  db = await syncFromSupabaseBackend(db);
 
   // Automatically synchronize Varian_Kambing from Google Sheets if connected
   if (db.settings.connectedSpreadsheetId) {
@@ -819,7 +888,7 @@ function checkAdminAuth(req: express.Request, res: express.Response, next: expre
 }
 
 // API: Tambah Peserta Baru (Pengurus Only)
-app.post('/api/qurban/peserta', checkAdminAuth, (req, res) => {
+app.post('/api/qurban/peserta', checkAdminAuth, async (req, res) => {
   const { nama, alamat, noHp, varianHarga, kodeVarian, catatanNiat, tanggalDaftar, setoranAwal, metodeSetoranAwal, penerima } = req.body;
   
   if (!nama || !alamat || !varianHarga) {
@@ -874,13 +943,13 @@ app.post('/api/qurban/peserta', checkAdminAuth, (req, res) => {
   };
 
   db.peserta.unshift(newPeserta);
-  writeDb(db);
+  await writeDbAsync(db);
 
   res.json({ success: true, message: 'Peserta berhasil didaftarkan!', peserta: newPeserta });
 });
 
 // API: Edit Data Peserta (Pengurus Only)
-app.put('/api/qurban/peserta/:id', checkAdminAuth, (req, res) => {
+app.put('/api/qurban/peserta/:id', checkAdminAuth, async (req, res) => {
   const { id } = req.params;
   const { nama, alamat, noHp, varianHarga, catatanNiat, tanggalDaftar } = req.body;
   const db = readDb();
@@ -907,13 +976,13 @@ app.put('/api/qurban/peserta/:id', checkAdminAuth, (req, res) => {
 
   p.status = p.totalTerkumpul >= p.targetKurban ? 'Lunas' : 'Dalam Proses';
   db.peserta[idx] = p;
-  writeDb(db);
+  await writeDbAsync(db);
 
   res.json({ success: true, message: 'Data peserta berhasil diperbarui', peserta: p });
 });
 
 // API: Catat Setoran / Pembayaran Cicilan (Pengurus Only)
-app.post('/api/qurban/peserta/:id/setoran', checkAdminAuth, (req, res) => {
+app.post('/api/qurban/peserta/:id/setoran', checkAdminAuth, async (req, res) => {
   const { id } = req.params;
   const { jumlah, tanggal, metode, keterangan, penerima } = req.body;
 
@@ -952,7 +1021,7 @@ app.post('/api/qurban/peserta/:id/setoran', checkAdminAuth, (req, res) => {
   p.status = p.totalTerkumpul >= p.targetKurban ? 'Lunas' : 'Dalam Proses';
 
   db.peserta[idx] = p;
-  writeDb(db);
+  await writeDbAsync(db);
 
   res.json({
     success: true,
@@ -963,7 +1032,7 @@ app.post('/api/qurban/peserta/:id/setoran', checkAdminAuth, (req, res) => {
 });
 
 // API: Update Setoran (Pengurus Only)
-app.put('/api/qurban/peserta/:id/setoran/:setoranId', checkAdminAuth, (req, res) => {
+app.put('/api/qurban/peserta/:id/setoran/:setoranId', checkAdminAuth, async (req, res) => {
   const { id, setoranId } = req.params;
   const { jumlah, tanggal, metode, keterangan, penerima } = req.body;
   const db = readDb();
@@ -989,13 +1058,13 @@ app.put('/api/qurban/peserta/:id/setoran/:setoranId', checkAdminAuth, (req, res)
   p.status = p.totalTerkumpul >= p.targetKurban ? 'Lunas' : 'Dalam Proses';
 
   db.peserta[idx] = p;
-  writeDb(db);
+  await writeDbAsync(db);
 
   res.json({ success: true, message: 'Riwayat setoran berhasil diperbarui', peserta: p });
 });
 
 // API: Hapus Setoran (Pengurus Only)
-app.delete('/api/qurban/peserta/:id/setoran/:setoranId', checkAdminAuth, (req, res) => {
+app.delete('/api/qurban/peserta/:id/setoran/:setoranId', checkAdminAuth, async (req, res) => {
   const { id, setoranId } = req.params;
   const db = readDb();
   const idx = db.peserta.findIndex(p => p.id === id);
@@ -1015,13 +1084,13 @@ app.delete('/api/qurban/peserta/:id/setoran/:setoranId', checkAdminAuth, (req, r
   p.status = p.totalTerkumpul >= p.targetKurban ? 'Lunas' : 'Dalam Proses';
 
   db.peserta[idx] = p;
-  writeDb(db);
+  await writeDbAsync(db);
 
   res.json({ success: true, message: 'Setoran berhasil dihapus', peserta: p });
 });
 
 // API: Hapus Peserta (Pengurus Only)
-app.delete('/api/qurban/peserta/:id', checkAdminAuth, (req, res) => {
+app.delete('/api/qurban/peserta/:id', checkAdminAuth, async (req, res) => {
   const { id } = req.params;
   const db = readDb();
   const filtered = db.peserta.filter(p => p.id !== id);
@@ -1029,24 +1098,24 @@ app.delete('/api/qurban/peserta/:id', checkAdminAuth, (req, res) => {
     return res.status(404).json({ success: false, message: 'Peserta tidak ditemukan' });
   }
   db.peserta = filtered;
-  writeDb(db);
+  await writeDbAsync(db);
   res.json({ success: true, message: 'Data peserta berhasil dihapus' });
 });
 
 // API: Bulk Sync peserta (e.g. from Google Sheets)
-app.post('/api/qurban/peserta/bulk-sync', (req, res) => {
+app.post('/api/qurban/peserta/bulk-sync', async (req, res) => {
   const { peserta: newPesertaList } = req.body;
   if (!Array.isArray(newPesertaList)) {
     return res.status(400).json({ success: false, message: 'Data peserta tidak valid' });
   }
   const db = readDb();
   db.peserta = newPesertaList;
-  writeDb(db);
+  await writeDbAsync(db);
   res.json({ success: true, message: 'Data berhasil disinkronkan dari Google Sheets', peserta: db.peserta });
 });
 
 // API: Update Pengaturan & PIN (Pengurus Only)
-app.post('/api/qurban/settings', checkAdminAuth, (req, res) => {
+app.post('/api/qurban/settings', checkAdminAuth, async (req, res) => {
   const { settings } = req.body;
   if (!settings) return res.status(400).json({ success: false, message: 'Data pengaturan kosong' });
 
@@ -1055,7 +1124,7 @@ app.post('/api/qurban/settings', checkAdminAuth, (req, res) => {
     ...db.settings,
     ...settings
   };
-  writeDb(db);
+  await writeDbAsync(db);
 
   const safeSettings = { ...db.settings };
   delete (safeSettings as any).adminPin;
@@ -1064,14 +1133,14 @@ app.post('/api/qurban/settings', checkAdminAuth, (req, res) => {
 });
 
 // API: Update Varian Kambing
-app.post('/api/qurban/varian-kambing', (req, res) => {
+app.post('/api/qurban/varian-kambing', async (req, res) => {
   const { varianKambing } = req.body;
   if (!Array.isArray(varianKambing) || varianKambing.length === 0) return res.status(400).json({ success: false, message: 'Data varian tidak valid' });
 
   const db = readDb();
   db.varianKambing = varianKambing;
   db.lastUpdated = new Date().toISOString();
-  writeDb(db);
+  await writeDbAsync(db);
 
   res.json({ success: true, message: 'Varian Kambing berhasil diperbarui', varianKambing: db.varianKambing });
 });

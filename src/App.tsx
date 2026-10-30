@@ -23,6 +23,7 @@ import { Peserta, AppSettings, SummaryStats, HARGA_KAMBING_OPTIONS, VarianKambin
 import { Tag, ArrowRight, FileSpreadsheet, Lock } from 'lucide-react';
 import { getAccessToken, initAuth, getSavedGoogleUser } from './services/googleAuth';
 import { fetchSpreadsheetDetails, populateSheetData, readVarianKambingSheet, populateRiwayatSetoranSheet } from './services/googleSheets';
+import { fetchPesertaFromSupabase } from './services/supabaseClient';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -147,7 +148,7 @@ export default function App() {
     }
   };
 
-  // Load from API with localStorage fallback
+  // Load from API with Supabase and localStorage fallback
   const fetchData = useCallback(async (isSilent = false): Promise<Peserta[]> => {
     if (!isSilent) setIsRefreshing(true);
     let fetchedPeserta: Peserta[] = [];
@@ -166,27 +167,31 @@ export default function App() {
           // Save to local cache
           localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(json));
         }
+      } else {
+        throw new Error('Server status not OK');
       }
     } catch (err) {
-      console.warn('Gagal fetch data dari server, menggunakan cache lokal:', err);
-      // Fallback to local cache
-      const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          if (parsed.peserta) {
-            fetchedPeserta = parsed.peserta;
-            setPeserta(fetchedPeserta);
+      // Fallback: fetch directly from Supabase Cloud
+      try {
+        const supaPeserta = await fetchPesertaFromSupabase(settings);
+        if (supaPeserta && supaPeserta.length > 0) {
+          fetchedPeserta = supaPeserta;
+          setPeserta(fetchedPeserta);
+        } else {
+          const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed.peserta) setPeserta(parsed.peserta);
+            if (parsed.settings) setSettings(parsed.settings);
+            if (parsed.summary) setSummary(parsed.summary);
           }
-          if (parsed.settings) setSettings(parsed.settings);
-          if (parsed.summary) setSummary(parsed.summary);
-        } catch {}
-      }
+        }
+      } catch {}
     } finally {
       if (!isSilent) setIsRefreshing(false);
     }
     return fetchedPeserta;
-  }, []);
+  }, [settings]);
 
   // Initial fetch and automatic real-time sync polling (every 6 seconds)
   useEffect(() => {
