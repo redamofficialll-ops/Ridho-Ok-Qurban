@@ -82,13 +82,14 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
   const [originMismatchError, setOriginMismatchError] = useState<string | null>(null);
 
   // Spreadsheet connection state
+  const localSavedId = typeof window !== 'undefined' ? localStorage.getItem('RIDHO_OK_CONNECTED_SPREADSHEET_ID') || settings.connectedSpreadsheetId || '' : '';
+  const localSavedTitle = typeof window !== 'undefined' ? localStorage.getItem('RIDHO_OK_CONNECTED_SPREADSHEET_TITLE') || settings.connectedSpreadsheetTitle || 'Google Spreadsheet Terhubung' : '';
+
   const [spreadsheetInput, setSpreadsheetInput] = useState<string>(
-    settings.connectedSpreadsheetId
-      ? `https://docs.google.com/spreadsheets/d/${settings.connectedSpreadsheetId}/edit`
-      : ''
+    localSavedId ? `https://docs.google.com/spreadsheets/d/${localSavedId}/edit` : ''
   );
-  const [connectedId, setConnectedId] = useState<string>(settings.connectedSpreadsheetId || '');
-  const [connectedTitle, setConnectedTitle] = useState<string>(settings.connectedSpreadsheetTitle || '');
+  const [connectedId, setConnectedId] = useState<string>(localSavedId);
+  const [connectedTitle, setConnectedTitle] = useState<string>(localSavedTitle);
   const [isConnecting, setIsConnecting] = useState(false);
   const [autoSync, setAutoSync] = useState<boolean>(settings.autoSyncSheets ?? true);
 
@@ -274,6 +275,11 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
         setConnectedTitle(details.title);
         setIsLocked(true);
 
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('RIDHO_OK_CONNECTED_SPREADSHEET_ID', cleanId);
+          localStorage.setItem('RIDHO_OK_CONNECTED_SPREADSHEET_TITLE', details.title);
+        }
+
         // Save to settings & lock
         await onSaveSettings({
           connectedSpreadsheetId: cleanId,
@@ -299,6 +305,10 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
         setConnectedId(cleanId);
         setConnectedTitle('Google Spreadsheet Panitia');
         setIsLocked(true);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('RIDHO_OK_CONNECTED_SPREADSHEET_ID', cleanId);
+          localStorage.setItem('RIDHO_OK_CONNECTED_SPREADSHEET_TITLE', 'Google Spreadsheet Panitia');
+        }
         await onSaveSettings({
           connectedSpreadsheetId: cleanId,
           connectedSpreadsheetTitle: 'Google Spreadsheet Panitia',
@@ -472,6 +482,10 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
     setConnectedTitle('');
     setSpreadsheetInput('');
     setShowLiveEmbed(false);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('RIDHO_OK_CONNECTED_SPREADSHEET_ID');
+      localStorage.removeItem('RIDHO_OK_CONNECTED_SPREADSHEET_TITLE');
+    }
     await onSaveSettings({
       connectedSpreadsheetId: '',
       connectedSpreadsheetTitle: '',
