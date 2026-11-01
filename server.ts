@@ -467,23 +467,28 @@ async function syncFromSupabaseBackend(db: DatabaseSchema): Promise<DatabaseSche
 
     // Read peserta from Supabase Cloud
     const { data: supaPeserta, error: pErr } = await supabaseServer.from('peserta').select('*');
-    if (!pErr && Array.isArray(supaPeserta) && supaPeserta.length > 0) {
-      db.peserta = supaPeserta.map((r: any) => ({
-        id: r.id,
-        kodePeserta: r.kode_peserta,
-        nama: r.nama,
-        alamat: r.alamat,
-        noHp: r.no_hp || '-',
-        varianHarga: Number(r.varian_harga),
-        namaVarian: r.nama_varian,
-        kodeVarian: r.kode_varian,
-        targetKurban: Number(r.target_kurban),
-        totalTerkumpul: Number(r.total_terkumpul || 0),
-        status: r.status || 'Dalam Proses',
-        tanggalDaftar: r.tanggal_daftar,
-        catatanNiat: r.catatan_niat || '',
-        riwayatSetoran: Array.isArray(r.riwayat_setoran) ? r.riwayat_setoran : []
-      }));
+    if (!pErr && Array.isArray(supaPeserta)) {
+      if (supaPeserta.length > 0) {
+        db.peserta = supaPeserta.map((r: any) => ({
+          id: r.id,
+          kodePeserta: r.kode_peserta,
+          nama: r.nama,
+          alamat: r.alamat,
+          noHp: r.no_hp || '-',
+          varianHarga: Number(r.varian_harga),
+          namaVarian: r.nama_varian,
+          kodeVarian: r.kode_varian,
+          targetKurban: Number(r.target_kurban),
+          totalTerkumpul: Number(r.total_terkumpul || 0),
+          status: r.status || 'Dalam Proses',
+          tanggalDaftar: r.tanggal_daftar,
+          catatanNiat: r.catatan_niat || '',
+          riwayatSetoran: Array.isArray(r.riwayat_setoran) ? r.riwayat_setoran : []
+        }));
+      } else if (db.peserta.length > 0) {
+        // Supabase is empty, seed initial data
+        await syncToSupabaseBackend(db);
+      }
     }
 
     // Read app_settings from Supabase Cloud
