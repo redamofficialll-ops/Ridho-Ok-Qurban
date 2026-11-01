@@ -33,14 +33,43 @@ const ACTIVE_PENGURUS_KEY = 'RIDHO_OK_ACTIVE_PENGURUS';
 
 export default function App() {
   const [peserta, setPeserta] = useState<Peserta[]>([]);
-  const [settings, setSettings] = useState<AppSettings>({
-    namaProgram: 'RIDHO OK QURBAN',
-    namaLembaga: 'RIDHO OK QURBAN',
-    targetIdulAdha: '2027-05-16',
-    tahunHijriyah: '1448 H',
-    tahunMasehi: '2027 M',
-    kontakPengurus: '0812-3456-7890',
-    rekeningTujuan: 'Bank Syariah Indonesia (BSI) 7788990011 a.n. Tabungan Qurban Ridho'
+  const [settings, setSettings] = useState<AppSettings>(() => {
+    let initialSheetId = typeof window !== 'undefined' ? localStorage.getItem('RIDHO_OK_CONNECTED_SPREADSHEET_ID') || '' : '';
+    let initialSheetTitle = typeof window !== 'undefined' ? localStorage.getItem('RIDHO_OK_CONNECTED_SPREADSHEET_TITLE') || 'Google Spreadsheet Terhubung' : '';
+    
+    try {
+      const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed.settings) {
+          if (!initialSheetId && parsed.settings.connectedSpreadsheetId) {
+            initialSheetId = parsed.settings.connectedSpreadsheetId;
+          }
+          if (!initialSheetTitle && parsed.settings.connectedSpreadsheetTitle) {
+            initialSheetTitle = parsed.settings.connectedSpreadsheetTitle;
+          }
+          return {
+            ...parsed.settings,
+            connectedSpreadsheetId: initialSheetId || parsed.settings.connectedSpreadsheetId || '',
+            connectedSpreadsheetTitle: initialSheetTitle || parsed.settings.connectedSpreadsheetTitle || '',
+            isSheetsLocked: true
+          };
+        }
+      }
+    } catch {}
+    return {
+      namaProgram: 'RIDHO OK QURBAN',
+      namaLembaga: 'RIDHO OK QURBAN',
+      targetIdulAdha: '2027-05-16',
+      tahunHijriyah: '1448 H',
+      tahunMasehi: '2027 M',
+      kontakPengurus: '0812-3456-7890',
+      rekeningTujuan: 'Bank Syariah Indonesia (BSI) 7788990011 a.n. Tabungan Qurban Ridho',
+      connectedSpreadsheetId: initialSheetId,
+      connectedSpreadsheetTitle: initialSheetTitle,
+      autoSyncSheets: true,
+      isSheetsLocked: true
+    };
   });
   const [summary, setSummary] = useState<SummaryStats>({
     totalPeserta: 0,
@@ -159,7 +188,22 @@ export default function App() {
         if (json.success) {
           fetchedPeserta = json.peserta || [];
           setPeserta(fetchedPeserta);
-          if (json.settings) setSettings(json.settings);
+          
+          let serverSettings = json.settings || {};
+          const localSheetId = typeof window !== 'undefined' ? localStorage.getItem('RIDHO_OK_CONNECTED_SPREADSHEET_ID') : '';
+          const localSheetTitle = typeof window !== 'undefined' ? localStorage.getItem('RIDHO_OK_CONNECTED_SPREADSHEET_TITLE') : '';
+          if (!serverSettings.connectedSpreadsheetId && localSheetId) {
+            serverSettings.connectedSpreadsheetId = localSheetId;
+            serverSettings.connectedSpreadsheetTitle = localSheetTitle || 'Google Spreadsheet Terhubung';
+            serverSettings.isSheetsLocked = true;
+          } else if (serverSettings.connectedSpreadsheetId && typeof window !== 'undefined') {
+            localStorage.setItem('RIDHO_OK_CONNECTED_SPREADSHEET_ID', serverSettings.connectedSpreadsheetId);
+            if (serverSettings.connectedSpreadsheetTitle) {
+              localStorage.setItem('RIDHO_OK_CONNECTED_SPREADSHEET_TITLE', serverSettings.connectedSpreadsheetTitle);
+            }
+          }
+          setSettings(serverSettings);
+
           if (json.summary) setSummary(json.summary);
           if (json.varianKambing) setVarianOptions(json.varianKambing);
           setLastUpdatedTime(json.lastUpdated || new Date().toISOString());
@@ -443,6 +487,14 @@ export default function App() {
       // Optimistic instant update so logo/settings reflect immediately
       setSettings(prev => {
         const updated = { ...prev, ...newSettings };
+        if (typeof window !== 'undefined') {
+          if (updated.connectedSpreadsheetId) {
+            localStorage.setItem('RIDHO_OK_CONNECTED_SPREADSHEET_ID', updated.connectedSpreadsheetId);
+          }
+          if (updated.connectedSpreadsheetTitle) {
+            localStorage.setItem('RIDHO_OK_CONNECTED_SPREADSHEET_TITLE', updated.connectedSpreadsheetTitle);
+          }
+        }
         const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
         if (cached) {
           try {
