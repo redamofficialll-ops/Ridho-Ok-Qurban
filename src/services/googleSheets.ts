@@ -33,16 +33,16 @@ export async function fetchSpreadsheetDetails(
   spreadsheetId: string
 ): Promise<{ title: string; sheetName: string; sheetId: number }> {
   const cleanId = extractSpreadsheetId(spreadsheetId) || spreadsheetId;
+  const isValidRealToken = token && token !== 'active' && token !== 'active-vercel-token' && token.length > 20;
   
-  if (token) {
+  if (isValidRealToken) {
     try {
       const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${cleanId}?fields=properties.title,sheets.properties`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.status === 401) {
-        throw new Error('AUTH_EXPIRED');
-      }
-      if (res.ok) {
+        console.info('Auth token inactive, falling back to public spreadsheet details.');
+      } else if (res.ok) {
         const json = await res.json();
         const title = json.properties?.title || 'Google Spreadsheet Qurban';
         const firstSheet = json.sheets?.[0]?.properties;
@@ -51,7 +51,6 @@ export async function fetchSpreadsheetDetails(
         return { title, sheetName, sheetId };
       }
     } catch (err: any) {
-      if (err.message === 'AUTH_EXPIRED') throw err;
       console.warn('Failed to fetch spreadsheet details via API, using fallback:', err);
     }
   }
@@ -182,15 +181,18 @@ export async function readSheetData(
 
   let rows: string[][] = [];
 
-  if (token && token !== 'active') {
+  const isValidRealToken = token && token !== 'active' && token !== 'active-vercel-token' && token.length > 20;
+
+  if (isValidRealToken) {
     try {
       const range = sheetName ? `${encodeURIComponent(sheetName)}!A1:Z500` : 'A1:Z500';
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${cleanId}/values/${range}`;
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      if (res.status === 401) throw new Error('AUTH_EXPIRED');
-      if (res.ok) {
+      if (res.status === 401) {
+        console.info('Auth token inactive, using public GViz fallback.');
+      } else if (res.ok) {
         const json = await res.json();
         rows = json.values || [];
       } else {
@@ -205,7 +207,6 @@ export async function readSheetData(
         }
       }
     } catch (err: any) {
-      if (err.message === 'AUTH_EXPIRED') throw err;
       console.warn('API fetch failed, trying public gviz fallback...', err);
     }
   }
@@ -311,7 +312,9 @@ export async function readVarianKambingSheet(
   const cleanId = extractSpreadsheetId(spreadsheetId) || spreadsheetId;
   let rows: string[][] = [];
 
-  if (token) {
+  const isValidRealToken = token && token !== 'active' && token !== 'active-vercel-token' && token.length > 20;
+
+  if (isValidRealToken) {
     try {
       const url = `https://sheets.googleapis.com/v4/spreadsheets/${cleanId}/values/Varian_Kambing!A1:D50`;
       const res = await fetch(url, {
