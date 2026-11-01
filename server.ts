@@ -503,6 +503,18 @@ async function syncFromSupabaseBackend(db: DatabaseSchema): Promise<DatabaseSche
         authorizedGoogleEmail: s.authorized_google_email || db.settings.authorizedGoogleEmail
       };
     }
+
+    // Read varian_kambing from Supabase Cloud
+    const { data: supaVarian, error: vErr } = await supabaseServer.from('varian_kambing').select('*');
+    if (!vErr && Array.isArray(supaVarian) && supaVarian.length > 0) {
+      db.varianKambing = supaVarian.map((r: any) => ({
+        kode: r.kode,
+        value: Number(r.value),
+        label: r.label || new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(r.value)),
+        grade: r.grade,
+        deskripsi: r.deskripsi
+      }));
+    }
   } catch (err) {
     console.warn('Notice reading from Supabase backend:', err);
   }
@@ -544,6 +556,20 @@ app.use((req, res, next) => {
   next();
 });
 
+// Helper function to extract clean Google Spreadsheet ID from URL or ID string
+function extractSpreadsheetId(input: string): string {
+  if (!input) return '';
+  const trimmed = input.trim();
+  const match = trimmed.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (match && match[1]) {
+    return match[1];
+  }
+  if (/^[a-zA-Z0-9-_]{15,80}$/.test(trimmed)) {
+    return trimmed;
+  }
+  return trimmed;
+}
+
 // Helper function to parse CSV formatted text robustly
 function parseCsv(csvText: string): string[][] {
   const lines: string[][] = [];
@@ -584,66 +610,78 @@ function parseCsv(csvText: string): string[][] {
 let lastVarianSyncTimestamp = 0;
 async function syncVarianFromGoogleSheet(spreadsheetId: string, force = false): Promise<VarianKambingOption[] | null> {
   if (!spreadsheetId) return null;
+  const cleanId = extractSpreadsheetId(spreadsheetId);
+  if (!cleanId) return null;
+
   const now = Date.now();
-  // 10-second throttle to prevent rate-limiting during high frequency polling
-  if (!force && now - lastVarianSyncTimestamp < 10000) {
+  // 3-second throttle for fast real-time price updates from Google Sheets
+  if (!force && now - lastVarianSyncTimestamp < 3000) {
     const db = readDb();
     return db.varianKambing || null;
   }
 
-  try {
-    const url = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId)}/gviz/tq?tqx=out:csv&sheet=Varian_Kambing&t=${now}`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeout);
+  const sheetsToTry = ['Varian_Kambing', 'Varian Kambing', 'Varian', ''];
 
-    if (!res.ok) return null;
-    const csvText = await res.text();
-    if (!csvText || csvText.includes('<!DOCTYPE html>') || csvText.length < 20) return null;
+  for (const sheetName of sheetsToTry) {
+    try {
+      const sheetParam = sheetName ? `&sheet=${encodeURIComponent(sheetName)}` : '';
+      const url = `https://docs.google.com/spreadsheets/d/${cleanId}/gviz/tq?tqx=out:csv${sheetParam}&t=${now}`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 4000);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
 
-    const rows = parseCsv(csvText);
-    if (!rows || rows.length < 2) return null;
+      if (!res.ok) continue;
+      const csvText = await res.text();
+      if (!csvText || csvText.includes('<!DOCTYPE html>') || csvText.length < 20) continue;
 
-    // Row 0 is header: Kode, Nilai, Grade, Deskripsi
-    const dataRows = rows.slice(1);
-    const options: VarianKambingOption[] = dataRows.map((r, idx) => {
-      const kode = r[0] ? String(r[0]).trim() : `V${String(idx + 1).padStart(2, '0')}`;
-      const rawVal = r[1] !== undefined ? String(r[1]) : '0';
-      const value = Number(rawVal.replace(/[^0-9]/g, '')) || 0;
-      const formatted = new Intl.NumberFormat('id-ID', {
-        style: 'currency',
-        currency: 'IDR',
-        maximumFractionDigits: 0
-      }).format(value);
-      const grade = r[2] ? String(r[2]).trim() : `Kambing Varian ${kode}`;
-      const deskripsi = r[3] ? String(r[3]).trim() : 'Sehat, cukup umur & sesuai syariat qurban';
+      const rows = parseCsv(csvText);
+      if (!rows || rows.length < 2) continue;
 
-      return {
-        kode,
-        value,
-        label: formatted,
-        grade,
-        deskripsi
-      };
-    });
+      // Filter out header row
+      const dataRows = rows.slice(1);
+      const options: VarianKambingOption[] = dataRows
+        .map((r, idx) => {
+          const kode = r[0] ? String(r[0]).trim() : `V${String(idx + 1).padStart(2, '0')}`;
+          const rawVal = r[1] !== undefined ? String(r[1]) : '0';
+          const value = Number(rawVal.replace(/[^0-9]/g, '')) || 0;
+          if (value <= 0) return null;
+          const formatted = new Intl.NumberFormat('id-ID', {
+            style: 'currency',
+            currency: 'IDR',
+            maximumFractionDigits: 0
+          }).format(value);
+          const grade = r[2] ? String(r[2]).trim() : `Kambing Varian ${kode}`;
+          const deskripsi = r[3] ? String(r[3]).trim() : 'Sehat, cukup umur & sesuai syariat qurban';
 
-    if (options.length > 0) {
-      lastVarianSyncTimestamp = now;
-      const db = readDb();
-      const currentJson = JSON.stringify(db.varianKambing);
-      const newJson = JSON.stringify(options);
-      if (currentJson !== newJson) {
-        db.varianKambing = options;
-        db.lastUpdated = new Date().toISOString();
-        writeDb(db);
-        console.log(`[Google Sheets Sync] Successfully updated ${options.length} Varian_Kambing in DB (e.g. ${options[options.length - 1].kode} = ${options[options.length - 1].value})`);
+          return {
+            kode,
+            value,
+            label: formatted,
+            grade,
+            deskripsi
+          };
+        })
+        .filter((item): item is VarianKambingOption => item !== null);
+
+      if (options.length > 0) {
+        lastVarianSyncTimestamp = now;
+        const db = readDb();
+        const currentJson = JSON.stringify(db.varianKambing);
+        const newJson = JSON.stringify(options);
+        if (currentJson !== newJson) {
+          db.varianKambing = options;
+          db.lastUpdated = new Date().toISOString();
+          writeDb(db);
+          console.log(`[Google Sheets Sync] Successfully updated ${options.length} Varian_Kambing in DB & Supabase`);
+        }
+        return options;
       }
-      return options;
+    } catch (err) {
+      // Try next sheet candidate
     }
-  } catch (err: any) {
-    // Fail silently to avoid breaking offline or local mode
   }
+
   return null;
 }
 
