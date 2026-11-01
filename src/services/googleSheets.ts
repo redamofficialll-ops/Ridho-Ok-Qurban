@@ -412,7 +412,9 @@ export async function populateRiwayatSetoranSheet(
  * Lists Google Spreadsheets in user's Google Drive
  */
 export async function listDriveSheets(token: string): Promise<DriveSpreadsheetFile[]> {
-  if (!token) return [];
+  if (!token || token === 'active-vercel-token' || token.length < 20) {
+    return [];
+  }
 
   try {
     const q = encodeURIComponent("mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false");
@@ -421,7 +423,9 @@ export async function listDriveSheets(token: string): Promise<DriveSpreadsheetFi
       headers: { Authorization: `Bearer ${token}` }
     });
 
-    if (res.status === 401) throw new Error('AUTH_EXPIRED');
+    if (res.status === 401) {
+      throw new Error('AUTH_EXPIRED');
+    }
 
     if (res.ok) {
       const json = await res.json();
@@ -432,7 +436,10 @@ export async function listDriveSheets(token: string): Promise<DriveSpreadsheetFi
         mimeType: f.mimeType
       }));
     }
-  } catch (err) {
+  } catch (err: any) {
+    if (err.message === 'AUTH_EXPIRED') {
+      throw err;
+    }
     console.warn('Error fetching Drive sheets:', err);
   }
 

@@ -95,6 +95,33 @@ export default defineConfig(() => {
     },
     build: {
       chunkSizeWarningLimit: 2000,
+      rollupOptions: {
+        onwarn(warning, warn) {
+          if (warning.code === 'CIRCULAR_DEPENDENCY' || warning.code === 'EVAL' || warning.code === 'MODULE_LEVEL_DIRECTIVE') {
+            return;
+          }
+          warn(warning);
+        },
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('jspdf') || id.includes('html2canvas')) {
+                return 'pdf-vendor';
+              }
+              if (id.includes('react') || id.includes('react-dom')) {
+                return 'react-vendor';
+              }
+              if (id.includes('lucide-react')) {
+                return 'icons-vendor';
+              }
+              if (id.includes('@supabase')) {
+                return 'supabase-vendor';
+              }
+              return 'vendor';
+            }
+          },
+        },
+      },
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.

@@ -153,12 +153,20 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
   const loadDriveFiles = async () => {
     try {
       const token = await getAccessToken();
-      if (!token) return;
+      if (!token || token === 'active-vercel-token') return;
       setIsLoadingSheets(true);
       const files = await listDriveSheets(token);
       setExistingSheets(files);
     } catch (err: any) {
-      console.warn('Error loading drive sheets:', err);
+      if (err.message === 'AUTH_EXPIRED') {
+        setStatusMessage({
+          type: 'error',
+          text: 'Sesi Google Anda telah kadaluarsa (AUTH_EXPIRED). Silakan hubungkan ulang akun Google Anda.'
+        });
+        setGoogleUser(null);
+      } else {
+        console.warn('Error loading drive sheets:', err);
+      }
     } finally {
       setIsLoadingSheets(false);
     }
