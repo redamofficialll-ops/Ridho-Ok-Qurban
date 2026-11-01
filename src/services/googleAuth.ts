@@ -56,10 +56,10 @@ export const initAuth = (
   _onAuthFailure?: () => void
 ) => {
   const savedUser = getSavedGoogleUser();
-  const token = typeof window !== 'undefined' ? (localStorage.getItem(ACCESS_TOKEN_KEY) || 'active-vercel-token') : 'active-vercel-token';
-  if (!cachedAccessToken) cachedAccessToken = token;
-  if (savedUser && onAuthSuccess) {
-    onAuthSuccess(savedUser, cachedAccessToken || 'active-vercel-token');
+  const token = typeof window !== 'undefined' ? localStorage.getItem(ACCESS_TOKEN_KEY) : null;
+  if (token) cachedAccessToken = token;
+  if (savedUser && onAuthSuccess && cachedAccessToken) {
+    onAuthSuccess(savedUser, cachedAccessToken);
   }
   return () => {};
 };
@@ -80,7 +80,7 @@ export const googleSignIn = async (
       photoURL: null,
       uid: `g-vercel-${Date.now()}`
     };
-    const token = 'active-vercel-token';
+    const token = localStorage.getItem(ACCESS_TOKEN_KEY) || '';
     cachedAccessToken = token;
     
     if (typeof window !== 'undefined') {
@@ -95,9 +95,9 @@ export const googleSignIn = async (
 
 export const getAccessToken = async (): Promise<string | null> => {
   if (!cachedAccessToken && typeof window !== 'undefined') {
-    cachedAccessToken = localStorage.getItem(ACCESS_TOKEN_KEY) || 'active-vercel-token';
+    cachedAccessToken = localStorage.getItem(ACCESS_TOKEN_KEY);
   }
-  return cachedAccessToken || 'active-vercel-token';
+  return cachedAccessToken;
 };
 
 export const googleLogout = async () => {

@@ -181,7 +181,7 @@ export async function readSheetData(
 
   let rows: string[][] = [];
 
-  const isValidRealToken = token && token !== 'active' && token !== 'active-vercel-token' && token.length > 20;
+  const isValidRealToken = !!token;
 
   if (isValidRealToken) {
     try {
@@ -312,7 +312,7 @@ export async function readVarianKambingSheet(
   const cleanId = extractSpreadsheetId(spreadsheetId) || spreadsheetId;
   let rows: string[][] = [];
 
-  const isValidRealToken = token && token !== 'active' && token !== 'active-vercel-token' && token.length > 20;
+  const isValidRealToken = !!token;
 
   if (isValidRealToken) {
     try {
@@ -412,7 +412,7 @@ export async function populateRiwayatSetoranSheet(
  * Lists Google Spreadsheets in user's Google Drive
  */
 export async function listDriveSheets(token: string): Promise<DriveSpreadsheetFile[]> {
-  if (!token || token === 'active-vercel-token' || token.length < 20) {
+  if (!token) {
     return [];
   }
 
