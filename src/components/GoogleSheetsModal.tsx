@@ -1,5 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { PersistedGoogleUser, googleSignIn, googleLogout, getAccessToken, initAuth, getSavedGoogleUser } from '../services/googleAuth';
+import {
+  PersistedGoogleUser,
+  googleSignIn,
+  googleLogout,
+  getAccessToken,
+  initAuth,
+  getSavedGoogleUser,
+  getOAuthClientId,
+  setCustomOAuthClientId
+} from '../services/googleAuth';
 import {
   extractSpreadsheetId,
   fetchSpreadsheetDetails,
@@ -31,7 +40,9 @@ import {
   Eye,
   EyeOff,
   UserCheck,
-  Check
+  Check,
+  Key,
+  Info
 } from 'lucide-react';
 
 interface GoogleSheetsModalProps {
@@ -65,6 +76,11 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
   const [authorizedEmailInput, setAuthorizedEmailInput] = useState<string>(defaultAuthorizedEmail);
   const [isEditingAuthorizedEmail, setIsEditingAuthorizedEmail] = useState(false);
 
+  // Custom OAuth Client ID state
+  const [customClientIdInput, setCustomClientIdInput] = useState<string>(getOAuthClientId());
+  const [showClientIdConfig, setShowClientIdConfig] = useState<boolean>(false);
+  const [originMismatchError, setOriginMismatchError] = useState<string | null>(null);
+
   // Spreadsheet connection state
   const [spreadsheetInput, setSpreadsheetInput] = useState<string>(
     settings.connectedSpreadsheetId
@@ -89,7 +105,7 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
   const [isPulling, setIsPulling] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Initialize Google Auth state from persistent storage and Firebase
+  // Initialize Google Auth state from persistent storage
   useEffect(() => {
     const saved = getSavedGoogleUser();
     if (saved) {
@@ -148,11 +164,21 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
     }
   };
 
+  const handleSaveCustomClientId = () => {
+    setCustomOAuthClientId(customClientIdInput);
+    setOriginMismatchError(null);
+    setStatusMessage({
+      type: 'success',
+      text: 'OAuth Client ID Google berhasil diperbarui!'
+    });
+    setShowClientIdConfig(false);
+  };
+
   const handleSignIn = async () => {
     setIsSigningIn(true);
     setStatusMessage(null);
+    setOriginMismatchError(null);
     try {
-      const targetEmail = (settings.authorizedGoogleEmail || defaultAuthorizedEmail).trim();
       const res = await googleSignIn();
       if (res) {
         setGoogleUser(res.user);
@@ -173,7 +199,14 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
         setStatusMessage(null);
       }
     } catch (err: any) {
-      if (err?.message === 'AUTH_EXPIRED') {
+      if (err?.message?.includes('ORIGIN_MISMATCH')) {
+        setOriginMismatchError(err.message);
+        setShowClientIdConfig(true);
+        setStatusMessage({
+          type: 'error',
+          text: `Origin Vercel (${window.location.origin}) belum terdaftar di Authorized JavaScript origins Google Cloud Client ID.`
+        });
+      } else if (err?.message === 'AUTH_EXPIRED') {
         await handleLogout();
         setStatusMessage({ type: 'error', text: 'Sesi Google Anda telah berakhir. Silakan masuk kembali.' });
       } else {
@@ -370,11 +403,15 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
       let token = await getAccessToken();
       let activeUser = googleUser;
       if (!token || !activeUser) {
-        const res = await googleSignIn(settings.authorizedGoogleEmail || defaultAuthorizedEmail);
-        if (res) {
-          setGoogleUser(res.user);
-          activeUser = res.user;
-          token = res.accessToken;
+        try {
+          const res = await googleSignIn();
+          if (res) {
+            setGoogleUser(res.user);
+            activeUser = res.user;
+            token = res.accessToken;
+          }
+        } catch (signInErr: any) {
+          console.info('Google sign-in skipped for pull, reading public spreadsheet:', signInErr);
         }
       }
 
@@ -384,7 +421,7 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
       if (imported.length === 0) {
         setStatusMessage({
           type: 'error',
-          text: `Tidak ada baris data peserta yang ditemukan pada spreadsheet "${connectedTitle}".`
+          text: `Tidak ada baris data peserta yang ditemukan pada spreadsheet "${connectedTitle}". Pastikan link/ID benar.`
         });
       } else {
         if (onUpdatePesertaFromSheets) {
@@ -606,6 +643,56 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
             </div>
           </div>
 
+          {/* ORIGIN MISMATCH HELP BANNER FOR VERCEL DEPLOYMENT */}
+          {(originMismatchError || showClientIdConfig) && (
+            <div className="bg-amber-50 border-2 border-amber-400 rounded-xl p-4 space-y-3 text-xs shadow-sm">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2 font-bold text-amber-900 text-sm">
+                  <Key className="w-4 h-4 text-amber-700 shrink-0" />
+                  <span>Pengaturan OAuth Client ID Google (Vercel Origin)</span>
+                </div>
+                <button
+                  onClick={() => setShowClientIdConfig(false)}
+                  className="p-1 text-slate-400 hover:text-slate-600 rounded"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {originMismatchError && (
+                <div className="p-2.5 bg-amber-100/80 rounded-lg text-amber-900 font-mono text-[11px] leading-relaxed">
+                  <strong>Penyebab origin_mismatch:</strong> Domain aplikasi Anda saat ini{' '}
+                  <u className="font-bold">{typeof window !== 'undefined' ? window.location.origin : ''}</u> belum
+                  didaftarkan sebagai <i>Authorized JavaScript origins</i> pada Google Cloud Console untuk OAuth Client ID ini.
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <label className="font-semibold text-slate-800 block text-[11px]">
+                  Masukkan Google OAuth Client ID milik Anda sendiri (opsional):
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={customClientIdInput}
+                    onChange={(e) => setCustomClientIdInput(e.target.value)}
+                    placeholder="xxxxxxxxx.apps.googleusercontent.com"
+                    className="flex-1 px-3 py-1.5 text-xs font-mono border border-amber-300 rounded-lg bg-white"
+                  />
+                  <button
+                    onClick={handleSaveCustomClientId}
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg transition"
+                  >
+                    Simpan Client ID
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-600 leading-normal">
+                  💡 <strong>Alternatif Tanpa Client ID:</strong> Anda tetap bisa menarik data & menyinkronkan harga dari Google Sheets yang dibagikan secara publik ("Siapa saja yang memiliki link dapat melihat") tanpa memerlukan Google Login!
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* 1. Google Account Login Bar */}
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -642,41 +729,52 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
               )}
             </div>
 
-            {googleUser ? (
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition"
-              >
-                <LogOut className="w-3.5 h-3.5 text-slate-500" />
-                <span>Putus Akun Google</span>
-              </button>
-            ) : (
-              <button
-                onClick={handleSignIn}
-                disabled={isSigningIn}
-                className="flex items-center gap-2.5 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl font-semibold text-xs transition shadow-sm active:scale-95 disabled:opacity-50"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 48 48">
-                  <path
-                    fill="#EA4335"
-                    d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
-                  />
-                  <path
-                    fill="#4285F4"
-                    d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
-                  />
-                  <path
-                    fill="#FBBC05"
-                    d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
-                  />
-                  <path
-                    fill="#34A853"
-                    d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
-                  />
-                </svg>
-                <span>{isSigningIn ? 'Menghubungkan...' : 'Sign in with Google'}</span>
-              </button>
-            )}
+            <div className="flex items-center gap-2 self-end sm:self-auto">
+              {!googleUser && (
+                <button
+                  onClick={() => setShowClientIdConfig(!showClientIdConfig)}
+                  className="p-2 border border-slate-300 text-slate-600 hover:bg-slate-50 rounded-xl transition text-xs flex items-center gap-1"
+                  title="Atur OAuth Client ID"
+                >
+                  <Key className="w-3.5 h-3.5 text-amber-600" />
+                </button>
+              )}
+              {googleUser ? (
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition"
+                >
+                  <LogOut className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Putus Akun Google</span>
+                </button>
+              ) : (
+                <button
+                  onClick={handleSignIn}
+                  disabled={isSigningIn}
+                  className="flex items-center gap-2.5 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl font-semibold text-xs transition shadow-sm active:scale-95 disabled:opacity-50"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 48 48">
+                    <path
+                      fill="#EA4335"
+                      d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
+                    />
+                    <path
+                      fill="#4285F4"
+                      d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
+                    />
+                  </svg>
+                  <span>{isSigningIn ? 'Menghubungkan...' : 'Sign in with Google'}</span>
+                </button>
+              )}
+            </div>
           </div>
 
           {/* 2. Connected Spreadsheet Status */}

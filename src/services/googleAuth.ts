@@ -1,5 +1,6 @@
 const GOOGLE_USER_KEY = 'RIDHO_OK_GOOGLE_USER_PROFILE';
-const OAUTH_CLIENT_ID = '638093405907-g07krv5ma8h3g6n4mjokd4o6svh30c69.apps.googleusercontent.com';
+const CUSTOM_CLIENT_ID_KEY = 'RIDHO_OK_CUSTOM_GOOGLE_CLIENT_ID';
+const DEFAULT_OAUTH_CLIENT_ID = '638093405907-g07krv5ma8h3g6n4mjokd4o6svh30c69.apps.googleusercontent.com';
 
 let cachedAccessToken: string | null = null;
 
@@ -9,6 +10,23 @@ export interface PersistedGoogleUser {
   photoURL: string | null;
   uid: string;
 }
+
+export const getOAuthClientId = (): string => {
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem(CUSTOM_CLIENT_ID_KEY);
+    if (saved && saved.trim()) return saved.trim();
+  }
+  return import.meta.env.VITE_GOOGLE_CLIENT_ID || DEFAULT_OAUTH_CLIENT_ID;
+};
+
+export const setCustomOAuthClientId = (clientId: string): void => {
+  if (typeof window === 'undefined') return;
+  if (clientId && clientId.trim()) {
+    localStorage.setItem(CUSTOM_CLIENT_ID_KEY, clientId.trim());
+  } else {
+    localStorage.removeItem(CUSTOM_CLIENT_ID_KEY);
+  }
+};
 
 export const getSavedGoogleUser = (): PersistedGoogleUser | null => {
   if (typeof window === 'undefined') return null;
@@ -69,8 +87,10 @@ export const googleSignIn = async (
           throw new Error('Gagal memuat pustaka otentikasi Google. Silakan periksa koneksi internet Anda.');
         }
 
+        const activeClientId = getOAuthClientId();
+
         const client = (window as any).google.accounts.oauth2.initTokenClient({
-          client_id: OAUTH_CLIENT_ID,
+          client_id: activeClientId,
           scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
           hint: expectedAuthorizedEmail || 'redamofficialll@gmail.com',
           callback: async (tokenResponse: any) => {
@@ -78,6 +98,8 @@ export const googleSignIn = async (
               if (tokenResponse.error === 'popup_closed_by_user' || tokenResponse.error === 'access_denied') {
                 console.info('Google sign in popup closed by user.');
                 resolve(null);
+              } else if (tokenResponse.error === 'origin_mismatch' || tokenResponse.error === 'redirect_uri_mismatch') {
+                reject(new Error(`ORIGIN_MISMATCH: Origin '${window.location.origin}' belum terdaftar di Google Cloud Console Authorized JavaScript origins.`));
               } else {
                 reject(new Error(`Otorisasi Google gagal: ${tokenResponse.error}`));
               }
@@ -118,13 +140,23 @@ export const googleSignIn = async (
             if (err?.type === 'popup_closed') {
               console.info('Google OAuth popup closed.');
               resolve(null);
+            } else if (err?.type === 'origin_mismatch' || String(err?.message || '').includes('origin_mismatch')) {
+              reject(new Error(`ORIGIN_MISMATCH: Origin '${window.location.origin}' belum terdaftar di Google Cloud Console Authorized JavaScript origins.`));
             } else {
               reject(new Error('Proses masuk Google dibatalkan atau pop-up diblokir.'));
             }
           }
         });
 
-        client.requestAccessToken({ prompt: 'select_account' });
+        try {
+          client.requestAccessToken({ prompt: 'select_account' });
+        } catch (reqErr: any) {
+          if (String(reqErr?.message || '').includes('origin_mismatch')) {
+            reject(new Error(`ORIGIN_MISMATCH: Origin '${window.location.origin}' belum terdaftar di Google Cloud Console Authorized JavaScript origins.`));
+          } else {
+            reject(reqErr);
+          }
+        }
       })
       .catch((err) => {
         reject(err);
