@@ -183,7 +183,7 @@ export async function readSheetData(
 
   let rows: string[][] = [];
 
-  const isValidRealToken = !!token;
+  const isValidRealToken = token && token !== 'active' && token !== 'active-vercel-token' && token.length > 20;
 
   if (isValidRealToken) {
     try {
@@ -449,35 +449,66 @@ export async function readRiwayatSetoranSheet(
 ): Promise<Record<string, any[]>> {
   const cleanId = extractSpreadsheetId(spreadsheetId) || spreadsheetId;
   const historyMap: Record<string, any[]> = {};
+  let rows: string[][] = [];
 
-  try {
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${cleanId}/values/Riwayat_Setoran!A1:H5000`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (res.ok) {
-      const json = await res.json();
-      const rows = json.values || [];
-      if (rows.length > 1) {
-        // Skip header
-        rows.slice(1).forEach((r: string[]) => {
-          const kodePeserta = r[0];
-          if (!historyMap[kodePeserta]) historyMap[kodePeserta] = [];
-          historyMap[kodePeserta].push({
-            id: `s-${Date.now()}-${Math.random()}`,
-            nomorKwitansi: r[2],
-            tanggal: r[3],
-            jumlah: Number(r[4]?.replace(/[^0-9]/g, '') || 0),
-            metode: r[5],
-            keterangan: r[6],
-            penerima: r[7]
-          });
-        });
+  const isValidRealToken = token && token !== 'active' && token !== 'active-vercel-token' && token.length > 20;
+
+  if (isValidRealToken) {
+    try {
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${cleanId}/values/Riwayat_Setoran!A1:H5000`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const json = await res.json();
+        rows = json.values || [];
+      }
+    } catch (e) {
+      console.warn('Error reading riwayat setoran via API:', e);
+    }
+  }
+
+  // Fallback to gviz CSV if no API rows
+  if (rows.length === 0) {
+    const sheetsToTry = ['Riwayat_Setoran', 'Riwayat Setoran', 'Setoran', 'History'];
+    for (const name of sheetsToTry) {
+      try {
+        const sheetParam = `&sheet=${encodeURIComponent(name)}`;
+        const gvizUrl = `https://docs.google.com/spreadsheets/d/${cleanId}/gviz/tq?tqx=out:csv${sheetParam}&t=${Date.now()}`;
+        const res = await fetch(gvizUrl);
+        if (res.ok) {
+          const csvText = await res.text();
+          if (csvText && !csvText.includes('<!DOCTYPE html>')) {
+            const parsed = parseCsvRows(csvText);
+            if (parsed.length >= 2) {
+              rows = parsed;
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(`gviz setoran fallback error for sheet ${name}:`, e);
       }
     }
-  } catch (e) {
-    console.warn('Error reading riwayat setoran:', e);
   }
+
+  if (rows.length > 1) {
+    rows.slice(1).forEach((r: string[]) => {
+      const kodePeserta = r[0] ? String(r[0]).trim() : '';
+      if (!kodePeserta) return;
+      if (!historyMap[kodePeserta]) historyMap[kodePeserta] = [];
+      historyMap[kodePeserta].push({
+        id: `s-${Date.now()}-${Math.random()}`,
+        nomorKwitansi: r[2] ? String(r[2]).trim() : '-',
+        tanggal: r[3] ? String(r[3]).trim() : new Date().toISOString().slice(0, 10),
+        jumlah: Number(r[4]?.replace(/[^0-9]/g, '') || 0),
+        metode: r[5] ? String(r[5]).trim() : 'Tunai',
+        keterangan: r[6] ? String(r[6]).trim() : '-',
+        penerima: r[7] ? String(r[7]).trim() : 'Pengurus'
+      });
+    });
+  }
+
   return historyMap;
 }
 

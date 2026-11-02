@@ -214,7 +214,7 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
         setShowClientIdConfig(true);
         setStatusMessage({
           type: 'error',
-          text: `Origin Vercel (${window.location.origin}) belum terdaftar di Authorized JavaScript origins Google Cloud Client ID.`
+          text: `Origin domain (${window.location.origin}) belum terdaftar di Authorized JavaScript origins Google Cloud Console untuk OAuth Client ID ini.`
         });
       } else if (err?.message === 'AUTH_EXPIRED') {
         await handleLogout();
@@ -419,20 +419,7 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
       setIsPulling(true);
       setStatusMessage(null);
 
-      let token = await getAccessToken();
-      let activeUser = googleUser;
-      if (!token || !activeUser) {
-        try {
-          const res = await googleSignIn();
-          if (res) {
-            setGoogleUser(res.user);
-            activeUser = res.user;
-            token = res.accessToken;
-          }
-        } catch (signInErr: any) {
-          console.info('Google sign-in skipped for pull, reading public spreadsheet:', signInErr);
-        }
-      }
+      const token = await getAccessToken();
 
       const details = await fetchSpreadsheetDetails(token || 'active', connectedId);
       const imported = await readSheetData(token || 'active', connectedId, details.sheetName);
