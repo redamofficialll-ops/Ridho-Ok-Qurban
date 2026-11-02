@@ -109,76 +109,88 @@ function loadGisScript(): Promise<void> {
   });
 }
 
+/**
+ * Execute Google Identity Services (GIS) direct OAuth popup
+ */
+export const signInWithGis = async (
+  clientId: string,
+  expectedAuthorizedEmail?: string
+): Promise<{ user: PersistedGoogleUser; accessToken: string }> => {
+  await loadGisScript();
+  return new Promise((resolve, reject) => {
+    try {
+      if (!(window as any).google?.accounts?.oauth2) {
+        throw new Error('Google Identity Services (GIS) tidak tersedia.');
+      }
+
+      const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive',
+        callback: async (tokenResponse: any) => {
+          if (tokenResponse && tokenResponse.access_token) {
+            const accessToken = tokenResponse.access_token;
+            let user: PersistedGoogleUser = {
+              email: expectedAuthorizedEmail || 'redamofficialll@gmail.com',
+              displayName: 'Panitia Qurban',
+              photoURL: null,
+              uid: 'google-user-' + Date.now()
+            };
+
+            try {
+              const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: { Authorization: `Bearer ${accessToken}` }
+              });
+              if (res.ok) {
+                const info = await res.json();
+                user = {
+                  email: info.email || user.email,
+                  displayName: info.name || info.given_name || user.displayName,
+                  photoURL: info.picture || null,
+                  uid: info.sub || user.uid
+                };
+              }
+            } catch (e) {}
+
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(GOOGLE_USER_KEY, JSON.stringify(user));
+              localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+              cachedAccessToken = accessToken;
+            }
+
+            resolve({ user, accessToken });
+          } else if (tokenResponse && tokenResponse.error) {
+            reject(new Error(`GIS_ERROR: ${tokenResponse.error_description || tokenResponse.error}`));
+          } else {
+            reject(new Error('User menutup dialog login Google GIS.'));
+          }
+        },
+        error_callback: (err: any) => {
+          console.error('GIS Error:', err);
+          const msg = typeof err === 'string' ? err : err?.message || JSON.stringify(err);
+          reject(new Error(`ORIGIN_MISMATCH: ${msg}`));
+        }
+      });
+
+      tokenClient.requestAccessToken({ prompt: 'consent' });
+    } catch (err: any) {
+      reject(err);
+    }
+  });
+};
+
 export const googleSignIn = async (
-  _expectedAuthorizedEmail?: string
+  expectedAuthorizedEmail?: string
 ): Promise<{ user: PersistedGoogleUser; accessToken: string } | null> => {
   const customId = typeof window !== 'undefined' ? localStorage.getItem(CUSTOM_CLIENT_ID_KEY) : null;
 
-  // If user provided a custom Client ID, use Google Identity Services (GIS) token client directly
+  // 1. If custom Client ID is configured, use GIS direct popup
   if (customId && customId.trim()) {
-    await loadGisScript();
-    return new Promise((resolve, reject) => {
-      try {
-        if (!(window as any).google?.accounts?.oauth2) {
-          throw new Error('Google Identity Services tidak tersedia');
-        }
-
-        const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
-          client_id: customId.trim(),
-          scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive',
-          callback: async (tokenResponse: any) => {
-            if (tokenResponse && tokenResponse.access_token) {
-              const accessToken = tokenResponse.access_token;
-              let user: PersistedGoogleUser = {
-                email: _expectedAuthorizedEmail || 'redamofficialll@gmail.com',
-                displayName: 'Panitia Qurban',
-                photoURL: null,
-                uid: 'google-user-' + Date.now()
-              };
-
-              try {
-                const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-                  headers: { Authorization: `Bearer ${accessToken}` }
-                });
-                if (res.ok) {
-                  const info = await res.json();
-                  user = {
-                    email: info.email || user.email,
-                    displayName: info.name || info.given_name || user.displayName,
-                    photoURL: info.picture || null,
-                    uid: info.sub || user.uid
-                  };
-                }
-              } catch (e) {}
-
-              if (typeof window !== 'undefined') {
-                localStorage.setItem(GOOGLE_USER_KEY, JSON.stringify(user));
-                localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
-                cachedAccessToken = accessToken;
-              }
-
-              resolve({ user, accessToken });
-            } else {
-              resolve(null);
-            }
-          },
-          error_callback: (err: any) => {
-            console.error('Custom Client ID GIS Error:', err);
-            const msg = typeof err === 'string' ? err : err?.message || JSON.stringify(err);
-            reject(new Error(`ORIGIN_MISMATCH: ${msg}`));
-          }
-        });
-
-        tokenClient.requestAccessToken({ prompt: 'consent' });
-      } catch (err: any) {
-        reject(err);
-      }
-    });
+    return await signInWithGis(customId.trim(), expectedAuthorizedEmail);
   }
 
-  // Standard Popup Flow with Seamless Netlify Session Fallback
+  // 2. Try Firebase Auth popup flow first
+  isSigningIn = true;
   try {
-    isSigningIn = true;
     const result = await signInWithPopup(auth, provider);
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if (!credential?.accessToken) {
@@ -200,24 +212,37 @@ export const googleSignIn = async (
 
     return { user: userProfile, accessToken: cachedAccessToken };
   } catch (error: any) {
-    console.info('Google Sign-In popup notice, auto-authorizing official account session for Netlify:', error);
+    const errCode = error?.code || '';
+    const errMessage = String(error?.message || error || '');
 
-    const targetEmail = _expectedAuthorizedEmail || 'redamofficialll@gmail.com';
-    const officialUser: PersistedGoogleUser = {
-      email: targetEmail,
-      displayName: 'Panitia Qurban (Akun Resmi)',
-      photoURL: '/logo-qurban.jpg',
-      uid: 'google-user-official-' + Date.now()
-    };
-    const fallbackToken = 'active-netlify-token';
-    cachedAccessToken = fallbackToken;
+    const isDomainError =
+      errCode === 'auth/unauthorized-domain' ||
+      errMessage.includes('unauthorized-domain') ||
+      errMessage.includes('auth/unauthorized-domain');
 
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(GOOGLE_USER_KEY, JSON.stringify(officialUser));
-      localStorage.setItem(ACCESS_TOKEN_KEY, fallbackToken);
+    console.warn('Firebase popup sign-in notice:', error);
+
+    // 3. Fallback to Google Identity Services popup with OAuth Client ID if domain restriction hit
+    try {
+      const clientId = getOAuthClientId();
+      if (clientId) {
+        console.info('Attempting Google GIS OAuth sign-in fallback...');
+        const gisResult = await signInWithGis(clientId, expectedAuthorizedEmail);
+        return gisResult;
+      }
+    } catch (gisError: any) {
+      console.warn('GIS sign-in fallback notice:', gisError);
     }
 
-    return { user: officialUser, accessToken: fallbackToken };
+    // 4. If domain error, format explicit error message so UI renders domain authorization guide
+    if (isDomainError) {
+      const origin = typeof window !== 'undefined' ? window.location.origin : 'https://...netlify.app';
+      throw new Error(
+        `Firebase: Error (auth/unauthorized-domain). Domain "${origin}" belum didaftarkan di Authorized Domains Firebase Console.`
+      );
+    }
+
+    throw error;
   } finally {
     isSigningIn = false;
   }
@@ -237,3 +262,4 @@ export const googleLogout = async () => {
     localStorage.removeItem(ACCESS_TOKEN_KEY);
   }
 };
+

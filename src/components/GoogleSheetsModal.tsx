@@ -43,7 +43,9 @@ import {
   UserCheck,
   Check,
   Key,
-  Info
+  Info,
+  Copy,
+  Globe
 } from 'lucide-react';
 
 interface GoogleSheetsModalProps {
@@ -667,13 +669,22 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
             </div>
           </div>
 
-          {/* ORIGIN MISMATCH HELP BANNER FOR VERCEL DEPLOYMENT */}
+          {/* FIREBASE UNAUTHORIZED DOMAIN / NETLIFY SETUP HELP BANNER */}
           {(originMismatchError || showClientIdConfig) && (
-            <div className="bg-amber-50 border-2 border-amber-400 rounded-xl p-4 space-y-3 text-xs shadow-sm">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2 font-bold text-amber-900 text-sm">
-                  <Key className="w-4 h-4 text-amber-700 shrink-0" />
-                  <span>Pengaturan OAuth Client ID Google (Vercel Origin)</span>
+            <div className="bg-gradient-to-br from-red-50 via-amber-50 to-orange-50 border-2 border-amber-500/80 rounded-2xl p-4 sm:p-5 space-y-4 text-xs shadow-md">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-red-500/20 border border-red-500/40 flex items-center justify-center text-red-700 font-bold shrink-0">
+                    <ShieldAlert className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-black text-slate-900 text-sm">
+                      Petunjuk Solusi: Firebase Error (auth/unauthorized-domain) di Netlify
+                    </h4>
+                    <p className="text-[11px] text-slate-600">
+                      Domain aplikasi Netlify Anda perlu ditambahkan ke daftar Authorized Domains pada Firebase Console agar Login Google berjalan 100% sempurna.
+                    </p>
+                  </div>
                 </div>
                 <button
                   onClick={() => setShowClientIdConfig(false)}
@@ -683,33 +694,74 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
                 </button>
               </div>
 
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2 text-xs text-amber-950">
-                <div className="flex items-start gap-2 font-semibold text-amber-900">
-                  <span className="text-sm">⚠️</span>
-                  <span>Solusi Error 400: origin_mismatch di Netlify</span>
+              {/* Current Domain Box with 1-Click Copy */}
+              <div className="p-3 bg-white rounded-xl border border-amber-300 shadow-inner space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-bold text-slate-800 text-[11px] uppercase tracking-wider flex items-center gap-1.5">
+                    <Globe className="w-3.5 h-3.5 text-blue-600" />
+                    Domain Netlify Anda Saat Ini:
+                  </span>
+                  <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                    Netlify Production
+                  </span>
                 </div>
-                <p className="text-[11px] leading-relaxed text-slate-700">
-                  Google memblokir login otomatis karena domain Netlify Anda saat ini (<u className="font-bold text-slate-900">{typeof window !== 'undefined' ? window.location.origin : 'https://ridhookqurban.netlify.app'}</u>) belum didaftarkan di Authorized JavaScript origins Google Cloud Console.
-                </p>
-                <div className="p-2 bg-white rounded-lg border border-amber-200 font-mono text-[11px] flex items-center justify-between gap-2">
-                  <span className="truncate">{typeof window !== 'undefined' ? window.location.origin : 'https://ridhookqurban.netlify.app'}</span>
+                <div className="flex items-center justify-between gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg font-mono text-xs">
+                  <span className="font-bold text-slate-900 truncate">
+                    {typeof window !== 'undefined' ? window.location.hostname : 'ridhookqurban.netlify.app'}
+                  </span>
                   <button
                     onClick={() => {
                       if (typeof window !== 'undefined') {
-                        navigator.clipboard.writeText(window.location.origin);
-                        setStatusMessage({ type: 'success', text: 'Domain berhasil disalin!' });
+                        navigator.clipboard.writeText(window.location.hostname);
+                        setStatusMessage({
+                          type: 'success',
+                          text: `Domain "${window.location.hostname}" berhasil disalin!`
+                        });
                       }
                     }}
-                    className="px-2 py-0.5 bg-amber-200 hover:bg-amber-300 text-amber-900 rounded font-sans font-bold text-[10px] shrink-0"
+                    className="px-3 py-1 bg-[#D4AF37] hover:bg-[#E5C07B] text-[#0A192F] font-bold text-[11px] rounded-md transition shrink-0 flex items-center gap-1"
                   >
-                    Salin Domain
+                    <Copy className="w-3 h-3" />
+                    <span>Salin Domain</span>
                   </button>
                 </div>
               </div>
 
-              <div className="space-y-2 pt-1">
+              {/* Step by Step instructions */}
+              <div className="space-y-2 text-slate-800">
+                <h5 className="font-bold text-xs text-amber-950 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>4 Langkah Mudah Mengaktifkan Domain Netlify di Firebase Console:</span>
+                </h5>
+                <ol className="list-decimal list-inside space-y-2 text-[11px] text-slate-700 font-medium pl-1">
+                  <li>
+                    Klik tombol ini untuk membuka halaman pengaturan domain:{' '}
+                    <a
+                      href="https://console.firebase.google.com/u/0/project/poetic-heaven-c8p5g/authentication/settings"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-[11px] ml-1 shadow-xs transition"
+                    >
+                      <span>Buka Firebase Console</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </li>
+                  <li>
+                    Di Firebase Console, pilih tab <strong>Authorized domains (Domain yang diizinkan)</strong>.
+                  </li>
+                  <li>
+                    Klik tombol <strong>Add domain (Tambah Domain)</strong>, lalu <u>Paste / Tempel</u> domain Netlify yang disalin di atas (<code className="font-mono bg-amber-100 text-amber-900 px-1 rounded">{typeof window !== 'undefined' ? window.location.hostname : 'domain.netlify.app'}</code>).
+                  </li>
+                  <li>
+                    Klik <strong>Save (Simpan)</strong>, lalu kembali ke aplikasi ini dan tekan tombol <strong>Sign in with Google</strong>.
+                  </li>
+                </ol>
+              </div>
+
+              {/* Alternative OAuth Client ID */}
+              <div className="pt-3 border-t border-amber-200/80 space-y-2">
                 <label className="font-semibold text-slate-800 block text-[11px]">
-                  Masukkan Google OAuth Client ID milik Anda (yang mendukung domain Netlify Anda):
+                  Atau Masukkan Custom Google OAuth Client ID milik Anda (Opsional):
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -721,14 +773,11 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
                   />
                   <button
                     onClick={handleSaveCustomClientId}
-                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg transition shrink-0"
+                    className="px-3 py-1.5 bg-[#0A192F] hover:bg-[#1E293B] text-[#D4AF37] font-bold text-xs rounded-lg transition shrink-0"
                   >
                     Simpan Client ID
                   </button>
                 </div>
-                <p className="text-[10px] text-slate-600 leading-normal">
-                  💡 <strong>Catatan:</strong> Jika Anda hanya ingin <strong>Tarik Data / Import dari Google Sheets</strong>, Anda <u>tidak perlu login Google</u>! Cukup bagikan Spreadsheet Anda ("Siapa saja dengan link") dan klik tombol Tarik Data di bawah.
-                </p>
               </div>
             </div>
           )}
