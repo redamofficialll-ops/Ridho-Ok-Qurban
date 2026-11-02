@@ -1141,7 +1141,8 @@ apiRouter.post('/qurban/sync-apps-script', (req, res) => {
   });
 });
 
-// Mount API router for both '/api' prefix and root '/' (to handle Vercel serverless function path rewrites seamlessly)
+// Mount API router for Netlify, Vercel, and local Express
+app.use('/.netlify/functions/api', apiRouter);
 app.use('/api', apiRouter);
 app.use('/', apiRouter);
 
@@ -1172,7 +1173,7 @@ async function startServer() {
   }
 }
 
-if (!process.env.VERCEL) {
+if (!process.env.VERCEL && !process.env.NETLIFY && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
   startServer();
 }
 
