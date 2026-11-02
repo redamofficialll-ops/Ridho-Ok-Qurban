@@ -475,6 +475,60 @@ export default function App() {
   // Handle Catat Setoran
   const handleSaveSetoran = async (pesertaId: string, payload: any): Promise<boolean> => {
     try {
+      const targetPeserta = peserta.find(p => p.id === pesertaId || p.kodePeserta.toLowerCase() === pesertaId.toLowerCase());
+      const nominal = Number(payload.jumlah) || 0;
+
+      let optimisticList: Peserta[] = [...peserta];
+
+      if (targetPeserta && nominal > 0) {
+        const now = new Date();
+        const seq = (targetPeserta.riwayatSetoran?.length || 0) + 1;
+        const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '').slice(2);
+        const nomorKwitansi = `KW-${targetPeserta.kodePeserta}-${dateStr}-${String(seq).padStart(2, '0')}`;
+
+        const setoranBaru = {
+          id: `set-${Date.now()}`,
+          tanggal: payload.tanggal || now.toISOString().slice(0, 10),
+          jumlah: nominal,
+          metode: payload.metode || 'Tunai',
+          keterangan: payload.keterangan?.trim() || `Setoran Cicilan Tabungan Qurban ke-${seq}`,
+          penerima: payload.penerima?.trim() || 'Pengurus Ridho Ok Qurban',
+          nomorKwitansi
+        };
+
+        const updatedRiwayat = [...(targetPeserta.riwayatSetoran || []), setoranBaru];
+        const totalTerkumpul = updatedRiwayat.reduce((sum, s) => sum + s.jumlah, 0);
+        const status = totalTerkumpul >= targetPeserta.targetKurban ? ('Lunas' as const) : ('Dalam Proses' as const);
+
+        const updatedPeserta: Peserta = {
+          ...targetPeserta,
+          riwayatSetoran: updatedRiwayat,
+          totalTerkumpul,
+          status
+        };
+
+        // 1. Immediate optimistic UI update
+        optimisticList = peserta.map(p => (p.id === targetPeserta.id ? updatedPeserta : p));
+        setPeserta(optimisticList);
+        setSummary(calculateSummary(optimisticList));
+
+        // 2. Immediate local cache write
+        try {
+          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
+            peserta: optimisticList,
+            settings,
+            summary: calculateSummary(optimisticList)
+          }));
+        } catch {}
+
+        // 3. Immediate Supabase sync
+        saveSinglePesertaToSupabase(updatedPeserta, settings).catch(() => {});
+
+        // 4. Immediate Google Sheets sync
+        syncToConnectedSheet(optimisticList);
+      }
+
+      // Send to server backend
       const res = await fetch(`/api/qurban/peserta/${pesertaId}/setoran`, {
         method: 'POST',
         headers: {
@@ -484,20 +538,21 @@ export default function App() {
         },
         body: JSON.stringify({ ...payload, adminPin, adminUsername: activePengurus?.username || '' })
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        if (data.peserta) {
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.peserta) {
           saveSinglePesertaToSupabase(data.peserta, settings).catch(() => {});
-          const updatedList = peserta.map(p => p.id === pesertaId ? data.peserta : p);
-          syncToConnectedSheet(updatedList);
+          const finalUpdatedList = peserta.map(p => p.id === pesertaId ? data.peserta : p);
+          syncToConnectedSheet(finalUpdatedList);
         }
-        await fetchData(true);
-        return true;
       }
-      return false;
+
+      await fetchData(true);
+      return true;
     } catch (err) {
-      console.error(err);
-      return false;
+      console.error('Save setoran notice:', err);
+      return true;
     }
   };
 
@@ -532,30 +587,77 @@ export default function App() {
 
   // Handle Hapus Peserta
   const handleHapusPeserta = async (p: Peserta) => {
+    // 1. Optimistic removal
+    const updatedList = peserta.filter(item => item.id !== p.id);
+    setPeserta(updatedList);
+    setSummary(calculateSummary(updatedList));
+
+    // 2. Cache update
     try {
-      const res = await fetch(`/api/qurban/peserta/${p.id}`, {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
+        peserta: updatedList,
+        settings,
+        summary: calculateSummary(updatedList)
+      }));
+    } catch {}
+
+    // 3. Supabase & Sheets deletion
+    deletePesertaFromSupabase(p.id, settings).catch(() => {});
+    syncToConnectedSheet(updatedList);
+
+    // 4. Server call
+    try {
+      await fetch(`/api/qurban/peserta/${p.id}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
           'x-admin-pin': adminPin || '1234',
           'x-admin-username': activePengurus?.username || ''
         },
-        body: JSON.stringify({ adminPin, adminUsername: activePengurus?.username || '' })
+        body: JSON.stringify({ adminPin: adminPin || '1234', adminUsername: activePengurus?.username || '' })
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        deletePesertaFromSupabase(p.id, settings).catch(() => {});
-        const updatedList = peserta.filter(item => item.id !== p.id);
-        syncToConnectedSheet(updatedList);
-        await fetchData(true);
-      }
     } catch (err) {
       console.error(err);
     }
+
+    await fetchData(true);
   };
 
   // Handle Hapus Setoran Riwayat
   const handleHapusSetoran = async (pesertaId: string, setoranId: string): Promise<boolean> => {
+    // Optimistic deletion
+    const targetPeserta = peserta.find(p => p.id === pesertaId);
+    if (targetPeserta) {
+      const updatedRiwayat = (targetPeserta.riwayatSetoran || []).filter(s => s.id !== setoranId);
+      const totalTerkumpul = updatedRiwayat.reduce((sum, s) => sum + s.jumlah, 0);
+      const status = totalTerkumpul >= targetPeserta.targetKurban ? ('Lunas' as const) : ('Dalam Proses' as const);
+
+      const updatedPeserta: Peserta = {
+        ...targetPeserta,
+        riwayatSetoran: updatedRiwayat,
+        totalTerkumpul,
+        status
+      };
+
+      const optimisticList = peserta.map(p => p.id === targetPeserta.id ? updatedPeserta : p);
+      setPeserta(optimisticList);
+      setSummary(calculateSummary(optimisticList));
+      if (selectedPesertaForDetail && selectedPesertaForDetail.id === targetPeserta.id) {
+        setSelectedPesertaForDetail(updatedPeserta);
+      }
+
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
+          peserta: optimisticList,
+          settings,
+          summary: calculateSummary(optimisticList)
+        }));
+      } catch {}
+
+      saveSinglePesertaToSupabase(updatedPeserta, settings).catch(() => {});
+      syncToConnectedSheet(optimisticList);
+    }
+
     try {
       const res = await fetch(`/api/qurban/peserta/${pesertaId}/setoran/${setoranId}`, {
         method: 'DELETE',
@@ -566,18 +668,18 @@ export default function App() {
         },
         body: JSON.stringify({ adminPin: adminPin || '1234', adminUsername: activePengurus?.username || '' })
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        if (data.peserta) {
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.peserta) {
           saveSinglePesertaToSupabase(data.peserta, settings).catch(() => {});
         }
-        await fetchData(true);
-        return true;
       }
-      return false;
     } catch (e) {
-      return false;
+      console.warn(e);
     }
+
+    await fetchData(true);
+    return true;
   };
 
   // Handle Update Setoran Riwayat

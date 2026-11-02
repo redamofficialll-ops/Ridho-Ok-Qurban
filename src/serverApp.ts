@@ -967,7 +967,7 @@ apiRouter.post('/qurban/peserta/:id/setoran', checkAdminAuth, async (req, res) =
   }
 
   const db = readDb();
-  const idx = db.peserta.findIndex(p => p.id === id);
+  const idx = db.peserta.findIndex(p => p.id === id || p.kodePeserta.toLowerCase() === id.toLowerCase());
   if (idx === -1) {
     return res.status(404).json({ success: false, message: 'Peserta tidak ditemukan' });
   }
