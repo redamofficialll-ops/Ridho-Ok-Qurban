@@ -97,7 +97,7 @@
       "terakhirLogin": "2026-10-12T14:00:17.240Z"
     }
   ],
-  "lastUpdated": "2026-11-02T14:47:51.919Z",
+  "lastUpdated": "2026-11-02T15:22:48.507Z",
   "varianKambing": [
     {
       "kode": "V01",
@@ -178,8 +178,8 @@
     },
     {
       "kode": "V12",
-      "value": 8000000,
-      "label": "Rp 8.000.000",
+      "value": 7000000,
+      "label": "Rp 7.000.000",
       "grade": "Kambing Tipe Jumbo 2",
       "deskripsi": "Bobot hidup > 63 kg, kelas tertinggi super istimewa"
     }

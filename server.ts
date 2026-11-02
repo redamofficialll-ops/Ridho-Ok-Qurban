@@ -8,8 +8,9 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DATA_DIR = path.resolve(__dirname, 'data');
-const DB_FILE = path.resolve(DATA_DIR, 'qurban_db.json');
+const isServerless = Boolean(process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.VERCEL);
+const DATA_DIR = isServerless ? '/tmp' : path.resolve(__dirname, 'data');
+const DB_FILE = isServerless ? path.join('/tmp', 'qurban_db.json') : path.resolve(DATA_DIR, 'qurban_db.json');
 import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://jtcugpnxnlpeoibsgodg.supabase.co';
@@ -400,51 +401,77 @@ const defaultInitialData: DatabaseSchema = {
   lastUpdated: new Date().toISOString()
 };
 
+let memoryDbCache: DatabaseSchema | null = null;
+
 function readDb(): DatabaseSchema {
-  try {
-    if (!fs.existsSync(DB_FILE)) {
-      fs.writeFileSync(DB_FILE, JSON.stringify(defaultInitialData, null, 2), 'utf-8');
-      return defaultInitialData;
-    }
-    const content = fs.readFileSync(DB_FILE, 'utf-8');
-    const parsed: DatabaseSchema = JSON.parse(content);
-    if (!parsed.settings) {
-      parsed.settings = defaultInitialData.settings;
-    }
-    if (!parsed.peserta) {
-      parsed.peserta = defaultInitialData.peserta;
-    }
-    if (!parsed.pengurus || !Array.isArray(parsed.pengurus) || parsed.pengurus.length === 0) {
-      parsed.pengurus = default5Pengurus;
-      writeDb(parsed);
-    } else {
-      let changed = false;
-      default5Pengurus.forEach(def => {
-        const found = parsed.pengurus?.find(p => p.username.toLowerCase() === def.username.toLowerCase());
-        if (!found) {
-          parsed.pengurus?.push(def);
-          changed = true;
-        }
-      });
-      if (changed) writeDb(parsed);
-    }
-    return parsed;
-  } catch (err) {
-    console.error('Error reading db:', err);
-    return defaultInitialData;
+  if (memoryDbCache) {
+    return memoryDbCache;
   }
+
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      const content = fs.readFileSync(DB_FILE, 'utf-8');
+      memoryDbCache = JSON.parse(content);
+    } else {
+      let initialData = defaultInitialData;
+      const seedCandidates = [
+        path.resolve(process.cwd(), 'data', 'qurban_db.json'),
+        path.resolve(__dirname, 'data', 'qurban_db.json'),
+        path.resolve(__dirname, '..', 'data', 'qurban_db.json'),
+        path.resolve(__dirname, '..', '..', 'data', 'qurban_db.json')
+      ];
+      for (const candidate of seedCandidates) {
+        if (fs.existsSync(candidate)) {
+          try {
+            const raw = fs.readFileSync(candidate, 'utf-8');
+            initialData = JSON.parse(raw);
+            break;
+          } catch {}
+        }
+      }
+      memoryDbCache = initialData;
+      writeDb(initialData);
+    }
+  } catch (err) {
+    if (!memoryDbCache) {
+      memoryDbCache = defaultInitialData;
+    }
+  }
+
+  const db = memoryDbCache || defaultInitialData;
+  if (!db.settings) db.settings = defaultInitialData.settings;
+  if (!db.peserta) db.peserta = defaultInitialData.peserta;
+  if (!db.pengurus || !Array.isArray(db.pengurus) || db.pengurus.length === 0) {
+    db.pengurus = default5Pengurus;
+    writeDb(db);
+  } else {
+    let changed = false;
+    default5Pengurus.forEach(def => {
+      const found = db.pengurus?.find(p => p.username.toLowerCase() === def.username.toLowerCase());
+      if (!found) {
+        db.pengurus?.push(def);
+        changed = true;
+      }
+    });
+    if (changed) writeDb(db);
+  }
+
+  return db;
 }
 
 function writeDb(data: DatabaseSchema): boolean {
   try {
     data.lastUpdated = new Date().toISOString();
+    memoryDbCache = data;
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
     const tempFile = `${DB_FILE}.tmp`;
     fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), 'utf-8');
     fs.renameSync(tempFile, DB_FILE);
-  } catch (err) {}
+  } catch (err) {
+    console.warn('writeDb file write notice:', err);
+  }
   return true;
 }
 
