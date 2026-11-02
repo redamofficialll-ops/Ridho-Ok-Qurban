@@ -209,12 +209,19 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
         setStatusMessage(null);
       }
     } catch (err: any) {
-      if (err?.message?.includes('ORIGIN_MISMATCH')) {
-        setOriginMismatchError(err.message);
+      const errString = String(err?.message || err?.code || err || '');
+      if (
+        errString.includes('ORIGIN_MISMATCH') ||
+        errString.includes('origin_mismatch') ||
+        errString.includes('400') ||
+        errString.includes('unauthorized-domain') ||
+        errString.includes('invalid-origin')
+      ) {
+        setOriginMismatchError(errString);
         setShowClientIdConfig(true);
         setStatusMessage({
           type: 'error',
-          text: `Origin domain (${window.location.origin}) belum terdaftar di Authorized JavaScript origins Google Cloud Console untuk OAuth Client ID ini.`
+          text: `Google OAuth memblokir domain ${window.location.origin}. Buka opsi Pengaturan Client ID di atas untuk petunjuk pendaftaran domain.`
         });
       } else if (err?.message === 'AUTH_EXPIRED') {
         await handleLogout();
@@ -676,35 +683,51 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
                 </button>
               </div>
 
-              {originMismatchError && (
-                <div className="p-2.5 bg-amber-100/80 rounded-lg text-amber-900 font-mono text-[11px] leading-relaxed">
-                  <strong>Penyebab origin_mismatch:</strong> Domain aplikasi Anda saat ini{' '}
-                  <u className="font-bold">{typeof window !== 'undefined' ? window.location.origin : ''}</u> belum
-                  didaftarkan sebagai <i>Authorized JavaScript origins</i> pada Google Cloud Console untuk OAuth Client ID ini.
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2 text-xs text-amber-950">
+                <div className="flex items-start gap-2 font-semibold text-amber-900">
+                  <span className="text-sm">⚠️</span>
+                  <span>Solusi Error 400: origin_mismatch di Netlify</span>
                 </div>
-              )}
+                <p className="text-[11px] leading-relaxed text-slate-700">
+                  Google memblokir login otomatis karena domain Netlify Anda saat ini (<u className="font-bold text-slate-900">{typeof window !== 'undefined' ? window.location.origin : 'https://ridhookqurban.netlify.app'}</u>) belum didaftarkan di Authorized JavaScript origins Google Cloud Console.
+                </p>
+                <div className="p-2 bg-white rounded-lg border border-amber-200 font-mono text-[11px] flex items-center justify-between gap-2">
+                  <span className="truncate">{typeof window !== 'undefined' ? window.location.origin : 'https://ridhookqurban.netlify.app'}</span>
+                  <button
+                    onClick={() => {
+                      if (typeof window !== 'undefined') {
+                        navigator.clipboard.writeText(window.location.origin);
+                        setStatusMessage({ type: 'success', text: 'Domain berhasil disalin!' });
+                      }
+                    }}
+                    className="px-2 py-0.5 bg-amber-200 hover:bg-amber-300 text-amber-900 rounded font-sans font-bold text-[10px] shrink-0"
+                  >
+                    Salin Domain
+                  </button>
+                </div>
+              </div>
 
-              <div className="space-y-2">
+              <div className="space-y-2 pt-1">
                 <label className="font-semibold text-slate-800 block text-[11px]">
-                  Masukkan Google OAuth Client ID milik Anda sendiri (opsional):
+                  Masukkan Google OAuth Client ID milik Anda (yang mendukung domain Netlify Anda):
                 </label>
                 <div className="flex gap-2">
                   <input
                     type="text"
                     value={customClientIdInput}
                     onChange={(e) => setCustomClientIdInput(e.target.value)}
-                    placeholder="xxxxxxxxx.apps.googleusercontent.com"
-                    className="flex-1 px-3 py-1.5 text-xs font-mono border border-amber-300 rounded-lg bg-white"
+                    placeholder="Contoh: 123456789-abcde...apps.googleusercontent.com"
+                    className="flex-1 px-3 py-1.5 text-xs font-mono border border-amber-300 rounded-lg bg-white focus:ring-2 focus:ring-amber-500"
                   />
                   <button
                     onClick={handleSaveCustomClientId}
-                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg transition"
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg transition shrink-0"
                   >
                     Simpan Client ID
                   </button>
                 </div>
                 <p className="text-[10px] text-slate-600 leading-normal">
-                  💡 <strong>Alternatif Tanpa Client ID:</strong> Anda tetap bisa menarik data & menyinkronkan harga dari Google Sheets yang dibagikan secara publik ("Siapa saja yang memiliki link dapat melihat") tanpa memerlukan Google Login!
+                  💡 <strong>Catatan:</strong> Jika Anda hanya ingin <strong>Tarik Data / Import dari Google Sheets</strong>, Anda <u>tidak perlu login Google</u>! Cukup bagikan Spreadsheet Anda ("Siapa saja dengan link") dan klik tombol Tarik Data di bawah.
                 </p>
               </div>
             </div>

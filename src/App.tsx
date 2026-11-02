@@ -209,10 +209,20 @@ export default function App() {
               localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(parsed));
             } catch {}
           }
+          return;
         }
       }
-    } catch (e) {
-      console.warn('Auto-sync varian kambing error:', e);
+    } catch {}
+
+    // Fallback: direct browser fetch from connected spreadsheet if available
+    if (settings.connectedSpreadsheetId) {
+      try {
+        const token = (await getAccessToken()) || 'active';
+        const variants = await readVarianKambingSheet(token, settings.connectedSpreadsheetId);
+        if (variants && variants.length > 0) {
+          setVarianOptions(variants);
+        }
+      } catch {}
     }
   };
 

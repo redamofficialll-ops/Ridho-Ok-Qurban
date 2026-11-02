@@ -33,7 +33,7 @@ export async function fetchSpreadsheetDetails(
   spreadsheetId: string
 ): Promise<{ title: string; sheetName: string; sheetId: number }> {
   const cleanId = extractSpreadsheetId(spreadsheetId) || spreadsheetId;
-  const isValidRealToken = token && token !== 'active' && token !== 'active-vercel-token' && token.length > 20;
+  const isValidRealToken = token && token !== 'active' && token !== 'active-netlify-token' && token !== 'active-vercel-token' && token.length > 20;
   
   if (isValidRealToken) {
     try {
@@ -183,7 +183,7 @@ export async function readSheetData(
 
   let rows: string[][] = [];
 
-  const isValidRealToken = token && token !== 'active' && token !== 'active-vercel-token' && token.length > 20;
+  const isValidRealToken = token && token !== 'active' && token !== 'active-netlify-token' && token !== 'active-vercel-token' && token.length > 20;
 
   if (isValidRealToken) {
     try {
@@ -329,7 +329,7 @@ export async function readVarianKambingSheet(
   const cleanId = extractSpreadsheetId(spreadsheetId) || spreadsheetId;
   let rows: string[][] = [];
 
-  const isValidRealToken = token && token !== 'active' && token !== 'active-vercel-token' && token.length > 20;
+  const isValidRealToken = token && token !== 'active' && token !== 'active-netlify-token' && token !== 'active-vercel-token' && token.length > 20;
 
   if (isValidRealToken) {
     try {
@@ -451,7 +451,7 @@ export async function readRiwayatSetoranSheet(
   const historyMap: Record<string, any[]> = {};
   let rows: string[][] = [];
 
-  const isValidRealToken = token && token !== 'active' && token !== 'active-vercel-token' && token.length > 20;
+  const isValidRealToken = token && token !== 'active' && token !== 'active-netlify-token' && token !== 'active-vercel-token' && token.length > 20;
 
   if (isValidRealToken) {
     try {
