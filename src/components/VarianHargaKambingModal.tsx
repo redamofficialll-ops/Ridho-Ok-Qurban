@@ -20,10 +20,10 @@ export const VarianHargaKambingModal: React.FC<VarianHargaKambingModalProps> = (
   varianOptions = [],
   initialSelectedHarga
 }) => {
-  const optionsToUse = varianOptions.length > 0 ? varianOptions : HARGA_KAMBING_OPTIONS;
-  const [selectedHarga, setSelectedHarga] = useState<number>(() => {
-    return initialSelectedHarga || optionsToUse[0]?.value || 4500000;
-  });
+  const optionsToUse = varianOptions && varianOptions.length > 0 ? varianOptions : HARGA_KAMBING_OPTIONS;
+  const [selectedHarga, setSelectedHarga] = useState<number>(
+    initialSelectedHarga || optionsToUse[0]?.value || 4500000
+  );
   const [periodeBulan, setPeriodeBulan] = useState<number>(5);
   const modalBodyRef = React.useRef<HTMLDivElement>(null);
 
@@ -36,6 +36,17 @@ export const VarianHargaKambingModal: React.FC<VarianHargaKambingModalProps> = (
       }
     }
   }, [initialSelectedHarga, isOpen]);
+
+  // Sync selected price if varianOptions prop changes (e.g. from Google Sheets sync)
+  useEffect(() => {
+    if (varianOptions && varianOptions.length > 0) {
+      // Find if current selected price still exists, if not, pick first
+      const exists = varianOptions.find(o => o.value === selectedHarga);
+      if (!exists) {
+        setSelectedHarga(varianOptions[0].value);
+      }
+    }
+  }, [varianOptions]);
 
   if (!isOpen) return null;
 

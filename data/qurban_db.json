@@ -15,16 +15,31 @@
     "autoSyncSheets": true,
     "isSheetsLocked": true,
     "lastSheetsSyncTime": "2026-10-13T16:14:06.930Z",
-    "supabaseUrl": "https://ahiwwauydluqarbqyfwj.supabase.co",
-    "supabaseAnonKey": "sb_publishable_z1svJ8s4sZtMYSUCNuSUfg_13PkD-7n"
+    "supabaseUrl": "https://jtcugpnxnlpeoibsgodg.supabase.co",
+    "supabaseAnonKey": "sb_publishable_denr1089Qaty2Gp6PSaVjA_RKJRdm9z"
   },
   "peserta": [
     {
-      "id": "p-001",
+      "id": "p-ROQ-002",
+      "kodePeserta": "ROQ-002",
+      "nama": "ashfoia",
+      "alamat": "liashfioas",
+      "noHp": "19308419084",
+      "varianHarga": 7000000,
+      "namaVarian": "Rp 7.000.000 (Kambing Tipe Jumbo 2)",
+      "targetKurban": 7000000,
+      "totalTerkumpul": 400000,
+      "status": "Dalam Proses",
+      "tanggalDaftar": "2026-11-02",
+      "catatanNiat": "oiwhaiofqhd",
+      "riwayatSetoran": []
+    },
+    {
+      "id": "p-ROQ-001",
       "kodePeserta": "ROQ-001",
       "nama": "Gilang Ramadhan",
       "alamat": "Jl. Pangkalan jati Kec. Cinere",
-      "noHp": "0895373598130",
+      "noHp": "895373598130",
       "varianHarga": 4500000,
       "namaVarian": "Rp 4.500.000 (Kambing Tipe Super 2)",
       "targetKurban": 4500000,
@@ -32,17 +47,7 @@
       "status": "Dalam Proses",
       "tanggalDaftar": "2026-10-12",
       "catatanNiat": "Untuk Diri Sendiri",
-      "riwayatSetoran": [
-        {
-          "id": "set-001-1",
-          "tanggal": "2026-10-12",
-          "jumlah": 2000000,
-          "metode": "Transfer Bank",
-          "keterangan": "Setoran Tabungan Qurban",
-          "penerima": "Pengurus RIDHO OK",
-          "nomorKwitansi": "KW-ROQ-001-01"
-        }
-      ]
+      "riwayatSetoran": []
     }
   ],
   "pengurus": [
@@ -92,7 +97,7 @@
       "terakhirLogin": "2026-10-12T14:00:17.240Z"
     }
   ],
-  "lastUpdated": "2026-11-01T16:16:25.594Z",
+  "lastUpdated": "2026-11-02T13:59:57.815Z",
   "varianKambing": [
     {
       "kode": "V01",
@@ -154,28 +159,28 @@
       "kode": "V09",
       "value": 5500000,
       "label": "Rp 5.500.000",
-      "grade": "Kambing Tipe Jumbo 1",
+      "grade": "Kambing Tipe Istimewa 1",
       "deskripsi": "Bobot hidup ± 48-52 kg, kambing super unggul"
     },
     {
       "kode": "V10",
       "value": 6000000,
       "label": "Rp 6.000.000",
-      "grade": "Kambing Tipe Jumbo 2",
+      "grade": "Kambing Tipe Istimewa 2",
       "deskripsi": "Bobot hidup ± 53-57 kg, daging melimpah barokah"
     },
     {
       "kode": "V11",
       "value": 6500000,
       "label": "Rp 6.500.000",
-      "grade": "Kambing Tipe Istimewa 1",
+      "grade": "Kambing Tipe Jumbo 1",
       "deskripsi": "Bobot hidup ± 58-62 kg, kambing jumbo istimewa"
     },
     {
       "kode": "V12",
-      "value": 9000000,
-      "label": "Rp 9.000.000",
-      "grade": "Kambing Tipe Istimewa 2",
+      "value": 7000000,
+      "label": "Rp 7.000.000",
+      "grade": "Kambing Tipe Jumbo 2",
       "deskripsi": "Bobot hidup > 63 kg, kelas tertinggi super istimewa"
     }
   ]

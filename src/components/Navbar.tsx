@@ -1,6 +1,6 @@
 import React from 'react';
 import { LogoEmblem } from './LogoEmblem';
-import { Shield, ShieldAlert, RefreshCw, FileSpreadsheet, Tag, Settings, LogOut, Lock, KeyRound, CheckCircle2, Database } from 'lucide-react';
+import { Shield, ShieldAlert, RefreshCw, FileSpreadsheet, Tag, Settings, LogOut, Lock, KeyRound, CheckCircle2 } from 'lucide-react';
 import { AppSettings, ActiveAdminSession } from '../types/qurban';
 import { PWAInstallButton } from './PWAInstallButton';
 import { WA_CHAT_URL, WhatsAppIcon } from './WhatsAppChatButton';
@@ -134,21 +134,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             )}
           </button>
-
-          {/* Database Supabase Button (Hanya Pengurus) */}
-          {isAdmin && onOpenSupabase && (
-            <button
-              onClick={onOpenSupabase}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-500/50 text-emerald-300 transition shadow-sm"
-              title="Kelola Database Supabase PostgreSQL"
-            >
-              <Database className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Database Supabase</span>
-              {settings.supabaseConnected && (
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              )}
-            </button>
-          )}
 
           {/* Pengurus / Admin Access */}
           {isAdmin ? (

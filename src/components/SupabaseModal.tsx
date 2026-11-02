@@ -24,9 +24,7 @@ import {
   seedSupabaseIfEmpty,
   saveSupabaseConfig,
   getSupabaseCredentials,
-  SupabaseHealthReport,
-  SUPABASE_DEFAULT_URL,
-  SUPABASE_DEFAULT_ANON_KEY
+  SupabaseHealthReport
 } from '../services/supabaseClient';
 
 interface SupabaseModalProps {
@@ -119,9 +117,7 @@ CREATE TABLE IF NOT EXISTS public.app_data (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
--- ==============================================================================
 -- KEBIJAKAN ROW LEVEL SECURITY (RLS)
--- ==============================================================================
 ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.varian_kambing ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pengurus ENABLE ROW LEVEL SECURITY;
@@ -145,38 +141,6 @@ BEGIN
     DROP POLICY IF EXISTS "Akses Penuh app_data" ON public.app_data;
     CREATE POLICY "Akses Penuh app_data" ON public.app_data FOR ALL USING (true) WITH CHECK (true);
 END $$;
-
--- DATA AWAL
-INSERT INTO public.app_settings (id, nama_program, nama_lembaga, target_idul_adha, tahun_hijriyah, tahun_masehi, admin_pin, kontak_pengurus, rekening_tujuan, authorized_google_email)
-VALUES (
-    'main_settings', 'RIDHO OK QURBAN', 'RIDHO OK QURBAN', '2027-05-16', '1448 H', '2027 M', '1234', '087874586603',
-    'Bank Syariah Indonesia (BSI) 7788990011 a.n. Tabungan Qurban Ridho', 'redamofficialll@gmail.com'
-) ON CONFLICT (id) DO UPDATE SET updated_at = now();
-
-INSERT INTO public.varian_kambing (kode, value, label, grade, deskripsi) VALUES
-('V01', 2000000, 'Rp 2.000.000', 'Kambing Tipe Hemat', 'Bobot hidup ± 20-22 kg'),
-('V02', 2500000, 'Rp 2.500.000', 'Kambing Tipe A', 'Bobot hidup ± 23-25 kg'),
-('V03', 3000000, 'Rp 3.000.000', 'Kambing Tipe B', 'Bobot hidup ± 26-28 kg'),
-('V04', 3500000, 'Rp 3.500.000', 'Kambing Tipe C', 'Bobot hidup ± 29-31 kg'),
-('V05', 4000000, 'Rp 4.000.000', 'Kambing Tipe Super 1', 'Bobot hidup ± 32-35 kg'),
-('V06', 4500000, 'Rp 4.500.000', 'Kambing Tipe Super 2', 'Bobot hidup ± 36-39 kg'),
-('V07', 4800000, 'Rp 4.800.000', 'Kambing Tipe Premium 1', 'Bobot hidup ± 40-43 kg'),
-('V08', 5000000, 'Rp 5.000.000', 'Kambing Tipe Premium 2', 'Bobot hidup ± 44-47 kg'),
-('V09', 5500000, 'Rp 5.500.000', 'Kambing Tipe Istimewa 1', 'Bobot hidup ± 48-52 kg'),
-('V10', 6000000, 'Rp 6.000.000', 'Kambing Tipe Istimewa 2', 'Bobot hidup ± 53-57 kg'),
-('V11', 6500000, 'Rp 6.500.000', 'Kambing Tipe Jumbo 1', 'Bobot hidup ± 58-62 kg'),
-('V12', 7000000, 'Rp 7.000.000', 'Kambing Tipe Jumbo 2', 'Bobot hidup > 63 kg')
-ON CONFLICT (kode) DO NOTHING;
-
-INSERT INTO public.pengurus (id, username, nama, password, role, status) VALUES
-('adm-001', 'Kemal1208', 'Kemal1208', 'Kemal1208', 'Pengurus Aktif', 'Aktif'),
-('adm-002', 'Addin7846', 'Addin7846', 'Addin7846', 'Pengurus Aktif', 'Aktif'),
-('adm-003', 'Gilang2356', 'Gilang2356', 'Gilang2356', 'Pengurus Aktif', 'Aktif'),
-('adm-004', 'Apni4638', 'Apni4638', 'Apni4638', 'Pengurus Aktif', 'Aktif'),
-('adm-005', 'Ridho9856', 'Ridho9856', 'Ridho9856', 'Pengurus Aktif', 'Aktif')
-ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO public.app_data (id, data) VALUES (1, '{}'::jsonb) ON CONFLICT (id) DO NOTHING;
 `;
 
 export const SupabaseModal: React.FC<SupabaseModalProps> = ({
@@ -242,7 +206,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
 
     try {
       saveSupabaseConfig(url, key);
-      initSupabaseClient({ supabaseUrl: url, supabaseAnonKey: key }, true);
+      initSupabaseClient({ supabaseUrl: url, supabaseAnonKey: key });
 
       await onSaveSettings({
         supabaseUrl: url,
@@ -255,11 +219,6 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
       if (report.connected) {
         setStatusMsg({ type: 'success', text: 'Koneksi Supabase berhasil diverifikasi & terhubung!' });
         if (onRefreshData) await onRefreshData();
-      } else if (report.status === 'unreachable') {
-        setStatusMsg({
-          type: 'info',
-          text: 'Konfigurasi disimpan. Supabase dalam mode siaga otomatis dan sinkron saat koneksi siap.'
-        });
       } else {
         setStatusMsg({ type: 'info', text: 'Pengaturan Supabase berhasil disimpan.' });
       }
@@ -274,7 +233,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
     setIsSeeding(true);
     setStatusMsg(null);
     try {
-      const client = initSupabaseClient({ supabaseUrl, supabaseAnonKey }, true);
+      const client = initSupabaseClient({ supabaseUrl, supabaseAnonKey });
       if (!client) {
         setStatusMsg({ type: 'error', text: 'Klien Supabase belum dapat dijangkau. Periksa Project URL & Key.' });
         return;
@@ -361,7 +320,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({
                   <span className={`relative inline-flex rounded-full h-3 w-3 ${health?.connected ? 'bg-emerald-500' : 'bg-blue-500'}`}></span>
                 </span>
                 <span className="text-xs font-bold text-slate-800">
-                  {health?.connected ? 'Supabase Cloud Terhubung' : 'Mode Sinkronisasi Aktif'}
+                  {health?.connected ? 'Supabase Cloud Terhubung' : 'Mode Sinkronisasi Siaga'}
                 </span>
               </div>
               <button

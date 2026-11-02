@@ -3,15 +3,73 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { updateServerSupabaseCredentials, supabaseServer } from './src/services/serverSupabase';
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DATA_DIR = process.env.VERCEL ? path.resolve('/tmp', 'data') : path.resolve(__dirname, 'data');
+const isServerless = Boolean(process.env.NETLIFY || process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const SEED_DB_FILE = path.resolve(__dirname, 'data', 'qurban_db.json');
+const DATA_DIR = isServerless ? path.resolve('/tmp', 'data') : path.resolve(__dirname, 'data');
 const DB_FILE = path.resolve(DATA_DIR, 'qurban_db.json');
+import { createClient } from '@supabase/supabase-js';
+
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://jtcugpnxnlpeoibsgodg.supabase.co';
+const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_denr1089Qaty2Gp6PSaVjA_RKJRdm9z';
+
+const serverSupabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+    detectSessionInUrl: false
+  }
+});
+
+async function syncPesertaToSupabaseServer(p: Peserta) {
+  try {
+    await serverSupabase.from('peserta').upsert([{
+      id: p.id,
+      kode_peserta: p.kodePeserta,
+      nama: p.nama,
+      alamat: p.alamat,
+      no_hp: p.noHp,
+      varian_harga: p.varianHarga,
+      nama_varian: p.namaVarian,
+      kode_varian: p.kodeVarian,
+      target_kurban: p.targetKurban,
+      total_terkumpul: p.totalTerkumpul,
+      status: p.status,
+      tanggal_daftar: p.tanggalDaftar,
+      catatan_niat: p.catatanNiat || '',
+      riwayat_setoran: p.riwayatSetoran || [],
+      updated_at: new Date().toISOString()
+    }]);
+  } catch {}
+}
+
+async function deletePesertaFromSupabaseServer(id: string) {
+  try {
+    await serverSupabase.from('peserta').delete().eq('id', id);
+  } catch {}
+}
+
+async function syncSettingsToSupabaseServer(settings: Partial<AppSettings>) {
+  try {
+    const row: any = { id: 'main_settings', updated_at: new Date().toISOString() };
+    if (settings.namaProgram !== undefined) row.nama_program = settings.namaProgram;
+    if (settings.namaLembaga !== undefined) row.nama_lembaga = settings.namaLembaga;
+    if (settings.targetIdulAdha !== undefined) row.target_idul_adha = settings.targetIdulAdha;
+    if (settings.tahunHijriyah !== undefined) row.tahun_hijriyah = settings.tahunHijriyah;
+    if (settings.tahunMasehi !== undefined) row.tahun_masehi = settings.tahunMasehi;
+    if (settings.kontakPengurus !== undefined) row.kontak_pengurus = settings.kontakPengurus;
+    if (settings.rekeningTujuan !== undefined) row.rekening_tujuan = settings.rekeningTujuan;
+    if (settings.adminPin !== undefined) row.admin_pin = settings.adminPin;
+    if (settings.connectedSpreadsheetId !== undefined) row.connected_spreadsheet_id = settings.connectedSpreadsheetId;
+    if (settings.authorizedGoogleEmail !== undefined) row.authorized_google_email = settings.authorizedGoogleEmail;
+
+    await serverSupabase.from('app_settings').upsert(row);
+  } catch {}
+}
 
 // Ensure data folder exists
 try {
@@ -173,8 +231,8 @@ const defaultInitialData: DatabaseSchema = {
     kontakPengurus: '087874586603',
     rekeningTujuan: 'Bank Syariah Indonesia (BSI) 7788990011 a.n. Tabungan Qurban Ridho',
     authorizedGoogleEmail: 'redamofficialll@gmail.com',
-    supabaseUrl: 'https://ahiwwauydluqarbqyfwj.supabase.co',
-    supabaseAnonKey: 'sb_publishable_z1svJ8s4sZtMYSUCNuSUfg_13PkD-7n'
+    supabaseUrl: 'https://jtcugpnxnlpeoibsgodg.supabase.co',
+    supabaseAnonKey: 'sb_publishable_denr1089Qaty2Gp6PSaVjA_RKJRdm9z'
   },
   pengurus: default5Pengurus,
   varianKambing: HARGA_KAMBING_OPTIONS,
@@ -347,6 +405,16 @@ const defaultInitialData: DatabaseSchema = {
 function readDb(): DatabaseSchema {
   try {
     if (!fs.existsSync(DB_FILE)) {
+      if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+      }
+      if (fs.existsSync(SEED_DB_FILE)) {
+        try {
+          const seedContent = fs.readFileSync(SEED_DB_FILE, 'utf-8');
+          fs.writeFileSync(DB_FILE, seedContent, 'utf-8');
+          return JSON.parse(seedContent);
+        } catch {}
+      }
       fs.writeFileSync(DB_FILE, JSON.stringify(defaultInitialData, null, 2), 'utf-8');
       return defaultInitialData;
     }
@@ -379,153 +447,6 @@ function readDb(): DatabaseSchema {
   }
 }
 
-async function syncToSupabaseBackend(db: DatabaseSchema) {
-  try {
-    const url = (db.settings?.supabaseUrl || process.env.VITE_SUPABASE_URL || '').trim();
-    const key = (db.settings?.supabaseAnonKey || process.env.VITE_SUPABASE_ANON_KEY || '').trim();
-    if (!url || !key || !url.startsWith('https://')) return;
-
-    updateServerSupabaseCredentials(url, key);
-
-    // Sync app_settings
-    await supabaseServer.from('app_settings').upsert({
-      id: 'main_settings',
-      nama_program: db.settings.namaProgram,
-      nama_lembaga: db.settings.namaLembaga,
-      target_idul_adha: db.settings.targetIdulAdha,
-      tahun_hijriyah: db.settings.tahunHijriyah,
-      tahun_masehi: db.settings.tahunMasehi,
-      kontak_pengurus: db.settings.kontakPengurus,
-      rekening_tujuan: db.settings.rekeningTujuan,
-      admin_pin: db.settings.adminPin || '1234',
-      connected_spreadsheet_id: db.settings.connectedSpreadsheetId || '',
-      authorized_google_email: db.settings.authorizedGoogleEmail || 'redamofficialll@gmail.com',
-      updated_at: new Date().toISOString()
-    });
-
-    // Sync varian_kambing
-    if (db.varianKambing && db.varianKambing.length > 0) {
-      await supabaseServer.from('varian_kambing').upsert(
-        db.varianKambing.map(v => ({
-          kode: v.kode,
-          value: v.value,
-          label: v.label,
-          grade: v.grade,
-          deskripsi: v.deskripsi
-        }))
-      );
-    }
-
-    // Sync pengurus
-    if (db.pengurus && db.pengurus.length > 0) {
-      await supabaseServer.from('pengurus').upsert(
-        db.pengurus.map(p => ({
-          id: p.id,
-          username: p.username,
-          nama: p.nama,
-          password: p.password,
-          role: p.role,
-          status: p.status
-        }))
-      );
-    }
-
-    // Sync peserta
-    if (db.peserta && db.peserta.length > 0) {
-      await supabaseServer.from('peserta').upsert(
-        db.peserta.map(p => ({
-          id: p.id,
-          kode_peserta: p.kodePeserta,
-          nama: p.nama,
-          alamat: p.alamat,
-          no_hp: p.noHp,
-          varian_harga: p.varianHarga,
-          nama_varian: p.namaVarian,
-          kode_varian: p.kodeVarian,
-          target_kurban: p.targetKurban,
-          total_terkumpul: p.totalTerkumpul,
-          status: p.status,
-          tanggal_daftar: p.tanggalDaftar,
-          catatan_niat: p.catatanNiat || '',
-          riwayat_setoran: p.riwayatSetoran || [],
-          updated_at: new Date().toISOString()
-        }))
-      );
-    }
-  } catch (err) {
-    console.warn('Backend Supabase sync notice:', err);
-  }
-}
-
-async function syncFromSupabaseBackend(db: DatabaseSchema): Promise<DatabaseSchema> {
-  try {
-    const url = (db.settings?.supabaseUrl || process.env.VITE_SUPABASE_URL || '').trim();
-    const key = (db.settings?.supabaseAnonKey || process.env.VITE_SUPABASE_ANON_KEY || '').trim();
-    if (!url || !key || !url.startsWith('https://')) return db;
-
-    updateServerSupabaseCredentials(url, key);
-
-    // Read peserta from Supabase Cloud
-    const { data: supaPeserta, error: pErr } = await supabaseServer.from('peserta').select('*');
-    if (!pErr && Array.isArray(supaPeserta)) {
-      if (supaPeserta.length > 0) {
-        db.peserta = supaPeserta.map((r: any) => ({
-          id: r.id,
-          kodePeserta: r.kode_peserta,
-          nama: r.nama,
-          alamat: r.alamat,
-          noHp: r.no_hp || '-',
-          varianHarga: Number(r.varian_harga),
-          namaVarian: r.nama_varian,
-          kodeVarian: r.kode_varian,
-          targetKurban: Number(r.target_kurban),
-          totalTerkumpul: Number(r.total_terkumpul || 0),
-          status: r.status || 'Dalam Proses',
-          tanggalDaftar: r.tanggal_daftar,
-          catatanNiat: r.catatan_niat || '',
-          riwayatSetoran: Array.isArray(r.riwayat_setoran) ? r.riwayat_setoran : []
-        }));
-      } else if (db.peserta.length > 0) {
-        // Supabase is empty, seed initial data
-        await syncToSupabaseBackend(db);
-      }
-    }
-
-    // Read app_settings from Supabase Cloud
-    const { data: supaSettings, error: sErr } = await supabaseServer.from('app_settings').select('*').limit(1);
-    if (!sErr && Array.isArray(supaSettings) && supaSettings.length > 0) {
-      const s = supaSettings[0];
-      db.settings = {
-        ...db.settings,
-        namaProgram: s.nama_program || db.settings.namaProgram,
-        namaLembaga: s.nama_lembaga || db.settings.namaLembaga,
-        targetIdulAdha: s.target_idul_adha || db.settings.targetIdulAdha,
-        tahunHijriyah: s.tahun_hijriyah || db.settings.tahunHijriyah,
-        tahunMasehi: s.tahun_masehi || db.settings.tahunMasehi,
-        kontakPengurus: s.kontak_pengurus || db.settings.kontakPengurus,
-        rekeningTujuan: s.rekening_tujuan || db.settings.rekeningTujuan,
-        connectedSpreadsheetId: s.connected_spreadsheet_id || db.settings.connectedSpreadsheetId,
-        authorizedGoogleEmail: s.authorized_google_email || db.settings.authorizedGoogleEmail
-      };
-    }
-
-    // Read varian_kambing from Supabase Cloud
-    const { data: supaVarian, error: vErr } = await supabaseServer.from('varian_kambing').select('*');
-    if (!vErr && Array.isArray(supaVarian) && supaVarian.length > 0) {
-      db.varianKambing = supaVarian.map((r: any) => ({
-        kode: r.kode,
-        value: Number(r.value),
-        label: r.label || new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(r.value)),
-        grade: r.grade,
-        deskripsi: r.deskripsi
-      }));
-    }
-  } catch (err) {
-    console.warn('Notice reading from Supabase backend:', err);
-  }
-  return db;
-}
-
 function writeDb(data: DatabaseSchema): boolean {
   try {
     data.lastUpdated = new Date().toISOString();
@@ -536,16 +457,11 @@ function writeDb(data: DatabaseSchema): boolean {
     fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), 'utf-8');
     fs.renameSync(tempFile, DB_FILE);
   } catch (err) {}
-  
-  // Background sync to connected Supabase Cloud database
-  syncToSupabaseBackend(data).catch(() => {});
   return true;
 }
 
 async function writeDbAsync(data: DatabaseSchema): Promise<boolean> {
-  writeDb(data);
-  await syncToSupabaseBackend(data);
-  return true;
+  return writeDb(data);
 }
 
 app.use(express.json({ limit: '10mb' }));
@@ -619,12 +535,6 @@ async function syncVarianFromGoogleSheet(spreadsheetId: string, force = false): 
   if (!cleanId) return null;
 
   const now = Date.now();
-  // 3-second throttle for fast real-time price updates from Google Sheets
-  if (!force && now - lastVarianSyncTimestamp < 3000) {
-    const db = readDb();
-    return db.varianKambing || null;
-  }
-
   const sheetsToTry = ['Varian_Kambing', 'Varian Kambing', 'Varian', ''];
 
   for (const sheetName of sheetsToTry) {
@@ -632,8 +542,8 @@ async function syncVarianFromGoogleSheet(spreadsheetId: string, force = false): 
       const sheetParam = sheetName ? `&sheet=${encodeURIComponent(sheetName)}` : '';
       const url = `https://docs.google.com/spreadsheets/d/${cleanId}/gviz/tq?tqx=out:csv${sheetParam}&t=${now}`;
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 4000);
-      const res = await fetch(url, { signal: controller.signal });
+      const timeout = setTimeout(() => controller.abort(), 6000);
+      const res = await fetch(url, { signal: controller.signal, cache: 'no-cache' });
       clearTimeout(timeout);
 
       if (!res.ok) continue;
@@ -648,8 +558,10 @@ async function syncVarianFromGoogleSheet(spreadsheetId: string, force = false): 
       const options: VarianKambingOption[] = dataRows
         .map((r, idx) => {
           const kode = r[0] ? String(r[0]).trim() : `V${String(idx + 1).padStart(2, '0')}`;
-          const rawVal = r[1] !== undefined ? String(r[1]) : '0';
-          const value = Number(rawVal.replace(/[^0-9]/g, '')) || 0;
+          const rawVal = r[1] !== undefined ? String(r[1]).trim() : '0';
+          // Remove cents/sen if formatted like ,00 or .00
+          const withoutCents = rawVal.replace(/[,.]00$/, '');
+          const value = Number(withoutCents.replace(/[^0-9]/g, '')) || 0;
           if (value <= 0) return null;
           const formatted = new Intl.NumberFormat('id-ID', {
             style: 'currency',
@@ -672,14 +584,25 @@ async function syncVarianFromGoogleSheet(spreadsheetId: string, force = false): 
       if (options.length > 0) {
         lastVarianSyncTimestamp = now;
         const db = readDb();
-        const currentJson = JSON.stringify(db.varianKambing);
-        const newJson = JSON.stringify(options);
-        if (currentJson !== newJson) {
-          db.varianKambing = options;
-          db.lastUpdated = new Date().toISOString();
-          writeDb(db);
-          console.log(`[Google Sheets Sync] Successfully updated ${options.length} Varian_Kambing in DB & Supabase`);
-        }
+        db.varianKambing = options;
+        db.lastUpdated = new Date().toISOString();
+        writeDb(db);
+
+        // Sync to Supabase in background
+        (async () => {
+          try {
+            await serverSupabase
+              .from('varian_kambing')
+              .upsert(options.map(o => ({
+                kode: o.kode,
+                value: o.value,
+                label: o.label,
+                grade: o.grade,
+                deskripsi: o.deskripsi
+              })));
+          } catch {}
+        })();
+
         return options;
       }
     } catch (err) {
@@ -721,7 +644,6 @@ apiRouter.get('/qurban/varian-kambing/sync', async (req, res) => {
 // API: Get all qurban data (Public / Peserta)
 apiRouter.get('/qurban/data', async (req, res) => {
   let db = readDb();
-  db = await syncFromSupabaseBackend(db);
 
   // Automatically synchronize Varian_Kambing from Google Sheets if connected
   if (db.settings.connectedSpreadsheetId) {
@@ -989,6 +911,7 @@ apiRouter.post('/qurban/peserta', checkAdminAuth, async (req, res) => {
 
   db.peserta.unshift(newPeserta);
   await writeDbAsync(db);
+  syncPesertaToSupabaseServer(newPeserta).catch(() => {});
 
   res.json({ success: true, message: 'Peserta berhasil didaftarkan!', peserta: newPeserta });
 });
@@ -1022,6 +945,7 @@ apiRouter.put('/qurban/peserta/:id', checkAdminAuth, async (req, res) => {
   p.status = p.totalTerkumpul >= p.targetKurban ? 'Lunas' : 'Dalam Proses';
   db.peserta[idx] = p;
   await writeDbAsync(db);
+  syncPesertaToSupabaseServer(p).catch(() => {});
 
   res.json({ success: true, message: 'Data peserta berhasil diperbarui', peserta: p });
 });
@@ -1067,6 +991,7 @@ apiRouter.post('/qurban/peserta/:id/setoran', checkAdminAuth, async (req, res) =
 
   db.peserta[idx] = p;
   await writeDbAsync(db);
+  syncPesertaToSupabaseServer(p).catch(() => {});
 
   res.json({
     success: true,
@@ -1104,6 +1029,7 @@ apiRouter.put('/qurban/peserta/:id/setoran/:setoranId', checkAdminAuth, async (r
 
   db.peserta[idx] = p;
   await writeDbAsync(db);
+  syncPesertaToSupabaseServer(p).catch(() => {});
 
   res.json({ success: true, message: 'Riwayat setoran berhasil diperbarui', peserta: p });
 });
@@ -1130,6 +1056,7 @@ apiRouter.delete('/qurban/peserta/:id/setoran/:setoranId', checkAdminAuth, async
 
   db.peserta[idx] = p;
   await writeDbAsync(db);
+  syncPesertaToSupabaseServer(p).catch(() => {});
 
   res.json({ success: true, message: 'Setoran berhasil dihapus', peserta: p });
 });
@@ -1144,6 +1071,7 @@ apiRouter.delete('/qurban/peserta/:id', checkAdminAuth, async (req, res) => {
   }
   db.peserta = filtered;
   await writeDbAsync(db);
+  deletePesertaFromSupabaseServer(id).catch(() => {});
   res.json({ success: true, message: 'Data peserta berhasil dihapus' });
 });
 
@@ -1170,6 +1098,7 @@ apiRouter.post('/qurban/settings', checkAdminAuth, async (req, res) => {
     ...settings
   };
   await writeDbAsync(db);
+  syncSettingsToSupabaseServer(settings).catch(() => {});
 
   const safeSettings = { ...db.settings };
   delete (safeSettings as any).adminPin;
@@ -1224,7 +1153,8 @@ apiRouter.post('/qurban/sync-apps-script', (req, res) => {
   });
 });
 
-// Mount API router for both '/api' prefix and root '/' (to handle Vercel serverless function path rewrites seamlessly)
+// Mount API router for Netlify, Vercel, and standard local dev routes
+app.use('/.netlify/functions/api', apiRouter);
 app.use('/api', apiRouter);
 app.use('/', apiRouter);
 
@@ -1255,7 +1185,7 @@ async function startServer() {
   }
 }
 
-if (!process.env.VERCEL) {
+if (!isServerless) {
   startServer();
 }
 

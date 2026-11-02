@@ -17,6 +17,7 @@ import {
   populateVarianKambingSheet,
   readVarianKambingSheet,
   populateRiwayatSetoranSheet,
+  readRiwayatSetoranSheet,
   listDriveSheets,
   DriveSpreadsheetFile
 } from '../services/googleSheets';
@@ -435,15 +436,22 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
 
       const details = await fetchSpreadsheetDetails(token || 'active', connectedId);
       const imported = await readSheetData(token || 'active', connectedId, details.sheetName);
+      const riwayatMap = await readRiwayatSetoranSheet(token || 'active', connectedId);
 
-      if (imported.length === 0) {
+      // Merge riwayat setoran
+      const importedWithHistory = imported.map(p => ({
+        ...p,
+        riwayatSetoran: riwayatMap[p.kodePeserta] || []
+      }));
+
+      if (importedWithHistory.length === 0) {
         setStatusMessage({
           type: 'error',
           text: `Tidak ada baris data peserta yang ditemukan pada spreadsheet "${connectedTitle}". Pastikan link/ID benar.`
         });
       } else {
         if (onUpdatePesertaFromSheets) {
-          onUpdatePesertaFromSheets(imported);
+          onUpdatePesertaFromSheets(importedWithHistory);
         }
         
         try {
@@ -459,7 +467,7 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
 
         setStatusMessage({
           type: 'success',
-          text: `Berhasil menarik & mengimpor ${imported.length} peserta terbaru dan menyinkronkan Varian Kambing dari spreadsheet!`
+          text: `Berhasil menarik & mengimpor ${importedWithHistory.length} peserta beserta riwayat setoran terbaru!`
         });
       }
     } catch (err: any) {
@@ -1037,7 +1045,7 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
                 {/* Pull Sync Button */}
                 <button
                   onClick={handlePullData}
-                  disabled={isPulling || !googleUser}
+                  disabled={isPulling}
                   className="flex items-center justify-center gap-2 p-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs transition border border-slate-300 disabled:opacity-50 active:scale-95"
                 >
                   <ArrowDownToLine className={`w-4 h-4 ${isPulling ? 'animate-bounce' : ''}`} />

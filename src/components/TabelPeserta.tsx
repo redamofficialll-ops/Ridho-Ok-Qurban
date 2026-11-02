@@ -15,7 +15,8 @@ import {
   LayoutGrid,
   Table as TableIcon,
   Download,
-  AlertCircle
+  AlertCircle,
+  FileSpreadsheet
 } from 'lucide-react';
 
 interface TabelPesertaProps {
@@ -69,6 +70,49 @@ export const TabelPeserta: React.FC<TabelPesertaProps> = ({
       `Assalamu'alaikum Wr. Wb. Bapak/Ibu ${p.nama},\n\nBerikut rekap Tabungan Qurban "RIDHO OK QURBAN":\n• Kode: ${p.kodePeserta}\n• Alamat: ${p.alamat}\n• Varian: ${p.namaVarian}\n• Target: ${formatRupiah(p.targetKurban)}\n• Terkumpul: ${formatRupiah(p.totalTerkumpul)}\n• Sisa: ${formatRupiah(sisa)}\n• Status: ${p.status.toUpperCase()}\n\nJazakumullah khairan katsiran atas kepercayaan & keistiqomahan dalam tabungan qurban ini.`
     );
     return `https://wa.me/${cleanPhone}?text=${text}`;
+  };
+
+  const handleExportCsv = () => {
+    const headers = [
+      'Kode Peserta',
+      'Nama Peserta',
+      'Alamat',
+      'No WhatsApp',
+      'Varian Kambing',
+      'Target Kurban (Rp)',
+      'Total Terkumpul (Rp)',
+      'Sisa (Rp)',
+      'Status',
+      'Tanggal Daftar',
+      'Catatan Niat'
+    ];
+
+    const rows = filteredPeserta.map(p => {
+      const sisa = Math.max(0, p.targetKurban - p.totalTerkumpul);
+      return [
+        `"${p.kodePeserta}"`,
+        `"${p.nama.replace(/"/g, '""')}"`,
+        `"${(p.alamat || '-').replace(/"/g, '""')}"`,
+        `"'${p.noHp || '-'}"`,
+        `"${(p.namaVarian || '').replace(/"/g, '""')}"`,
+        p.targetKurban,
+        p.totalTerkumpul,
+        sisa,
+        `"${p.status}"`,
+        `"${p.tanggalDaftar}"`,
+        `"${(p.catatanNiat || '').replace(/"/g, '""')}"`
+      ].join(',');
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Laporan_Tabungan_Qurban_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // Dalam Mode Peserta (!isAdmin), pop up / tabel laporan disembunyikan (tidak terlihat)

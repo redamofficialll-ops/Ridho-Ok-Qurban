@@ -308,24 +308,6 @@ export const ModalSettings: React.FC<ModalSettingsProps> = ({
                 Hanya 1 akun Google ini yang berwenang menghubungkan dan menyinkronkan data langsung ke Google Sheets.
               </p>
             </div>
-
-            {/* Google Apps Script Webhook URL */}
-            <div className="bg-emerald-50/70 p-3.5 rounded-xl border border-emerald-200 space-y-1">
-              <label className="text-xs font-bold text-emerald-900 uppercase tracking-wider block flex items-center gap-1.5">
-                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
-                <span>Google Apps Script Webhook URL (Untuk Auto-Sync Tanpa Login)</span>
-              </label>
-              <input
-                type="url"
-                placeholder="https://script.google.com/macros/s/.../exec"
-                value={appsScriptWebhookUrl}
-                onChange={(e) => setAppsScriptWebhookUrl(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-emerald-300 bg-white font-mono text-slate-800"
-              />
-              <p className="text-[11px] text-emerald-700/80">
-                Tempelkan URL Web App dari Google Apps Script agar aplikasi dapat otomatis mengirimkan data peserta baru ke Spreadsheet tanpa login.
-              </p>
-            </div>
           </div>
 
           {/* Ganti PIN Keamanan */}

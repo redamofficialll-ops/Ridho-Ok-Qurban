@@ -163,8 +163,10 @@ export async function populateSheetData(
 
   if (!res.ok) {
     const errText = await res.text();
-    // If range doesn't exist or tab is missing, try creating tab or append
     console.warn('Google Sheets PUT error:', errText);
+    if (res.status === 403 || errText.includes('ACCESS_TOKEN_SCOPE_INSUFFICIENT')) {
+      throw new Error('AUTH_EXPIRED');
+    }
     throw new Error('Gagal memperbarui sheet data peserta.');
   }
 }
@@ -213,18 +215,22 @@ export async function readSheetData(
 
   // Fallback to gviz CSV if no API rows
   if (rows.length === 0) {
-    try {
-      const sheetParam = sheetName ? `&sheet=${encodeURIComponent(sheetName)}` : '';
-      const gvizUrl = `https://docs.google.com/spreadsheets/d/${cleanId}/gviz/tq?tqx=out:csv${sheetParam}&t=${Date.now()}`;
-      const res = await fetch(gvizUrl);
-      if (res.ok) {
-        const csvText = await res.text();
-        if (csvText && !csvText.includes('<!DOCTYPE html>')) {
-          rows = parseCsvRows(csvText);
+    const sheetsToTry = [sheetName, 'Data_Peserta', 'Data Peserta', 'Peserta', 'Sheet1', ''];
+    for (const name of sheetsToTry) {
+      try {
+        const sheetParam = name ? `&sheet=${encodeURIComponent(name)}` : '';
+        const gvizUrl = `https://docs.google.com/spreadsheets/d/${cleanId}/gviz/tq?tqx=out:csv${sheetParam}&t=${Date.now()}`;
+        const res = await fetch(gvizUrl);
+        if (res.ok) {
+          const csvText = await res.text();
+          if (csvText && !csvText.includes('<!DOCTYPE html>')) {
+            rows = parseCsvRows(csvText);
+            if (rows.length >= 2) break;
+          }
         }
+      } catch (e) {
+        console.warn(`gviz fallback error for sheet ${name}:`, e);
       }
-    } catch (e) {
-      console.warn('gviz fallback error:', e);
     }
   }
 
@@ -247,7 +253,7 @@ export async function readSheetData(
     const catatanNiat = r[10] ? String(r[10]).trim() : '';
 
     return {
-      id: `p-sheet-${idx + 1}-${Date.now()}`,
+      id: kodePeserta ? `p-${kodePeserta}` : `p-sheet-${idx + 1}-${Date.now()}`,
       kodePeserta,
       nama,
       alamat,
@@ -267,18 +273,29 @@ export async function readSheetData(
 }
 
 /**
- * Writes 12 Varian Kambing Options to Varian_Kambing tab
+ * Writes 12 Varian Kambing Options to Varian_Kambing tab ONLY IF EMPTY
  */
 export async function populateVarianKambingSheet(
   token: string,
   spreadsheetId: string,
-  sheetId?: number
+  sheetId?: number,
+  options?: VarianKambingOption[]
 ): Promise<void> {
   const cleanId = extractSpreadsheetId(spreadsheetId) || spreadsheetId;
   if (!token) return;
 
+  // Protect user edits: check if sheet already has values
+  try {
+    const existing = await readVarianKambingSheet(token, cleanId);
+    if (existing && existing.length > 0) {
+      // Sheet already has data, never overwrite user prices
+      return;
+    }
+  } catch {}
+
+  const source = options && options.length > 0 ? options : HARGA_KAMBING_OPTIONS;
   const headers = ['Kode', 'Nilai (Rp)', 'Grade / Tipe', 'Deskripsi'];
-  const rows = HARGA_KAMBING_OPTIONS.map(opt => [
+  const rows = source.map(opt => [
     opt.kode,
     opt.value,
     opt.grade,
@@ -312,13 +329,14 @@ export async function readVarianKambingSheet(
   const cleanId = extractSpreadsheetId(spreadsheetId) || spreadsheetId;
   let rows: string[][] = [];
 
-  const isValidRealToken = !!token;
+  const isValidRealToken = token && token !== 'active' && token !== 'active-vercel-token' && token.length > 20;
 
   if (isValidRealToken) {
     try {
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${cleanId}/values/Varian_Kambing!A1:D50`;
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${cleanId}/values/Varian_Kambing!A1:D50?t=${Date.now()}`;
       const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-cache'
       });
       if (res.ok) {
         const json = await res.json();
@@ -328,14 +346,28 @@ export async function readVarianKambingSheet(
   }
 
   if (rows.length === 0) {
-    try {
-      const gvizUrl = `https://docs.google.com/spreadsheets/d/${cleanId}/gviz/tq?tqx=out:csv&sheet=Varian_Kambing&t=${Date.now()}`;
-      const res = await fetch(gvizUrl);
-      if (res.ok) {
-        const csvText = await res.text();
-        rows = parseCsvRows(csvText);
+    // Prioritize exact match
+    const sheetsToTry = ['Varian_Kambing', 'Varian Kambing', 'Varian', 'Sheet1', ''];
+    for (const sheetName of sheetsToTry) {
+      try {
+        const sheetParam = sheetName ? `&sheet=${encodeURIComponent(sheetName)}` : '';
+        const gvizUrl = `https://docs.google.com/spreadsheets/d/${cleanId}/gviz/tq?tqx=out:csv${sheetParam}&t=${Date.now()}`;
+        const res = await fetch(gvizUrl);
+        if (res.ok) {
+          const csvText = await res.text();
+          if (csvText && !csvText.includes('<!DOCTYPE html>')) {
+            const parsed = parseCsvRows(csvText);
+            // Verify if it looks like Varian Kambing data (has headers/values)
+            if (parsed.length >= 2) {
+              rows = parsed;
+              break; // Found it
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(`gviz fallback error for sheet ${sheetName}:`, e);
       }
-    } catch {}
+    }
   }
 
   if (rows.length < 2) return HARGA_KAMBING_OPTIONS;
@@ -406,6 +438,47 @@ export async function populateRiwayatSetoranSheet(
   } catch (err) {
     console.warn('Error populating setoran sheet:', err);
   }
+}
+
+/**
+ * Reads Riwayat Setoran from Riwayat_Setoran tab
+ */
+export async function readRiwayatSetoranSheet(
+  token: string,
+  spreadsheetId: string
+): Promise<Record<string, any[]>> {
+  const cleanId = extractSpreadsheetId(spreadsheetId) || spreadsheetId;
+  const historyMap: Record<string, any[]> = {};
+
+  try {
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${cleanId}/values/Riwayat_Setoran!A1:H5000`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (res.ok) {
+      const json = await res.json();
+      const rows = json.values || [];
+      if (rows.length > 1) {
+        // Skip header
+        rows.slice(1).forEach((r: string[]) => {
+          const kodePeserta = r[0];
+          if (!historyMap[kodePeserta]) historyMap[kodePeserta] = [];
+          historyMap[kodePeserta].push({
+            id: `s-${Date.now()}-${Math.random()}`,
+            nomorKwitansi: r[2],
+            tanggal: r[3],
+            jumlah: Number(r[4]?.replace(/[^0-9]/g, '') || 0),
+            metode: r[5],
+            keterangan: r[6],
+            penerima: r[7]
+          });
+        });
+      }
+    }
+  } catch (e) {
+    console.warn('Error reading riwayat setoran:', e);
+  }
+  return historyMap;
 }
 
 /**

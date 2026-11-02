@@ -16,14 +16,26 @@ import { ModalDetailPeserta } from './components/ModalDetailPeserta';
 import { KwitansiModal } from './components/KwitansiModal';
 import { ModalEditPeserta } from './components/ModalEditPeserta';
 import { ModalSettings } from './components/ModalSettings';
+import { SupabaseModal } from './components/SupabaseModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { SyaratKetentuanCard } from './components/SyaratKetentuanCard';
 import { WA_CHAT_URL, WA_PHONE, WhatsAppIcon } from './components/WhatsAppChatButton';
 import { Peserta, AppSettings, SummaryStats, HARGA_KAMBING_OPTIONS, VarianKambingOption, formatRupiah, ActiveAdminSession } from './types/qurban';
 import { Tag, ArrowRight, FileSpreadsheet, Lock } from 'lucide-react';
 import { getAccessToken, initAuth, getSavedGoogleUser } from './services/googleAuth';
-import { fetchSpreadsheetDetails, populateSheetData, readVarianKambingSheet, populateRiwayatSetoranSheet } from './services/googleSheets';
-import { fetchPesertaFromSupabase } from './services/supabaseClient';
+import { fetchSpreadsheetDetails, populateSheetData, populateRiwayatSetoranSheet, readSheetData, readVarianKambingSheet } from './services/googleSheets';
+import {
+  fetchPesertaFromSupabase,
+  syncPesertaToSupabase,
+  deletePesertaFromSupabase,
+  syncAllDataWithSupabase,
+  saveSinglePesertaToSupabase,
+  saveSettingsToSupabase,
+  fetchSettingsFromSupabase,
+  fetchVarianFromSupabase,
+  subscribePesertaSupabase,
+  subscribeVarianSupabase
+} from './services/supabaseClient';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -81,6 +93,25 @@ export default function App() {
     persentaseTotal: 0
   });
 
+  const calculateSummary = (pesertaList: Peserta[]): SummaryStats => {
+    const totalPeserta = pesertaList.length;
+    const totalTargetDana = pesertaList.reduce((acc, p) => acc + (p.targetKurban || 0), 0);
+    const totalDanaTerkumpul = pesertaList.reduce((acc, p) => acc + (p.totalTerkumpul || 0), 0);
+    const totalSisaDana = Math.max(0, totalTargetDana - totalDanaTerkumpul);
+    const jumlahLunas = pesertaList.filter(p => p.status === 'Lunas').length;
+    const persentaseTotal = totalTargetDana > 0 ? Math.round((totalDanaTerkumpul / totalTargetDana) * 100) : 0;
+    
+    return {
+      totalPeserta,
+      totalTargetDana,
+      totalDanaTerkumpul,
+      totalSisaDana,
+      jumlahLunas,
+      jumlahProses: totalPeserta - jumlahLunas,
+      persentaseTotal
+    };
+  };
+
   const [activePengurus, setActivePengurus] = useState<ActiveAdminSession | null>(() => {
     try {
       const saved = localStorage.getItem(ACTIVE_PENGURUS_KEY);
@@ -112,6 +143,7 @@ export default function App() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedPesertaForEdit, setSelectedPesertaForEdit] = useState<Peserta | null>(null);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
   const [presetVariantForRegister, setPresetVariantForRegister] = useState<number>(4500000);
   const [varianOptions, setVarianOptions] = useState<VarianKambingOption[]>(HARGA_KAMBING_OPTIONS);
 
@@ -161,6 +193,29 @@ export default function App() {
     }
   };
 
+  const syncVarianFromSheets = async () => {
+    try {
+      const res = await fetch(`/api/qurban/varian-kambing/sync?t=${Date.now()}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.varianKambing) && json.varianKambing.length > 0) {
+          setVarianOptions(json.varianKambing);
+          // Update local cache
+          const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
+          if (cached) {
+            try {
+              const parsed = JSON.parse(cached);
+              parsed.varianKambing = json.varianKambing;
+              localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(parsed));
+            } catch {}
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Auto-sync varian kambing error:', e);
+    }
+  };
+
   const handleUpdatePesertaFromSheets = async (importedList: Peserta[]) => {
     try {
       const res = await fetch('/api/qurban/peserta/bulk-sync', {
@@ -177,76 +232,120 @@ export default function App() {
     }
   };
 
-  // Load from API with Supabase and localStorage fallback
   const fetchData = useCallback(async (isSilent = false): Promise<Peserta[]> => {
     if (!isSilent) setIsRefreshing(true);
     let fetchedPeserta: Peserta[] = [];
+
+    // Always fetch live Google Sheet variants
+    syncVarianFromSheets();
+
     try {
+      const supaPeserta = await fetchPesertaFromSupabase(settings);
+      if (supaPeserta && supaPeserta.length > 0) {
+        fetchedPeserta = supaPeserta;
+        setPeserta(fetchedPeserta);
+        setSummary(calculateSummary(fetchedPeserta));
+        setLastUpdatedTime(new Date().toISOString());
+
+        fetchSettingsFromSupabase(settings).then(s => {
+          if (s) setSettings(prev => ({ ...prev, ...s }));
+        }).catch(() => {});
+
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
+          peserta: fetchedPeserta,
+          settings,
+          summary: calculateSummary(fetchedPeserta)
+        }));
+        if (!isSilent) setIsRefreshing(false);
+        return fetchedPeserta;
+      }
+
       const res = await fetch(`/api/qurban/data?t=${Date.now()}`);
       if (res.ok) {
         const json = await res.json();
-        if (json.success) {
-          fetchedPeserta = json.peserta || [];
+        if (json.success && json.peserta) {
+          fetchedPeserta = json.peserta;
           setPeserta(fetchedPeserta);
-          
-          let serverSettings = json.settings || {};
-          const localSheetId = typeof window !== 'undefined' ? localStorage.getItem('RIDHO_OK_CONNECTED_SPREADSHEET_ID') : '';
-          const localSheetTitle = typeof window !== 'undefined' ? localStorage.getItem('RIDHO_OK_CONNECTED_SPREADSHEET_TITLE') : '';
-          if (!serverSettings.connectedSpreadsheetId && localSheetId) {
-            serverSettings.connectedSpreadsheetId = localSheetId;
-            serverSettings.connectedSpreadsheetTitle = localSheetTitle || 'Google Spreadsheet Terhubung';
-            serverSettings.isSheetsLocked = true;
-          } else if (serverSettings.connectedSpreadsheetId && typeof window !== 'undefined') {
-            localStorage.setItem('RIDHO_OK_CONNECTED_SPREADSHEET_ID', serverSettings.connectedSpreadsheetId);
-            if (serverSettings.connectedSpreadsheetTitle) {
-              localStorage.setItem('RIDHO_OK_CONNECTED_SPREADSHEET_TITLE', serverSettings.connectedSpreadsheetTitle);
-            }
-          }
-          setSettings(serverSettings);
-
+          if (json.settings) setSettings(json.settings);
           if (json.summary) setSummary(json.summary);
-          if (json.varianKambing) setVarianOptions(json.varianKambing);
+          if (json.varianKambing && json.varianKambing.length > 0) {
+            setVarianOptions(json.varianKambing);
+          }
           setLastUpdatedTime(json.lastUpdated || new Date().toISOString());
 
-          // Save to local cache
           localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(json));
+          if (!isSilent) setIsRefreshing(false);
+          return fetchedPeserta;
         }
-      } else {
-        throw new Error('Server status not OK');
       }
-    } catch (err) {
-      // Fallback: fetch directly from Supabase Cloud
-      try {
-        const supaPeserta = await fetchPesertaFromSupabase(settings);
-        if (supaPeserta && supaPeserta.length > 0) {
-          fetchedPeserta = supaPeserta;
-          setPeserta(fetchedPeserta);
-        } else {
-          const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            if (parsed.peserta) setPeserta(parsed.peserta);
-            if (parsed.settings) setSettings(parsed.settings);
-            if (parsed.summary) setSummary(parsed.summary);
-          }
-        }
-      } catch {}
+      throw new Error('API unavailable, fallback to cache');
+    } catch {
+      const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (parsed.peserta) setPeserta(parsed.peserta);
+          if (parsed.settings) setSettings(parsed.settings);
+          if (parsed.summary) setSummary(parsed.summary);
+          if (parsed.varianKambing) setVarianOptions(parsed.varianKambing);
+        } catch {}
+      }
     } finally {
       if (!isSilent) setIsRefreshing(false);
     }
     return fetchedPeserta;
   }, [settings]);
 
-  // Initial fetch and automatic real-time sync polling (every 6 seconds)
+  // Initial fetch, live Supabase real-time channel subscription & fallback polling
   useEffect(() => {
     fetchData();
-    pollingIntervalRef.current = setInterval(() => {
+
+    // Subscribe to live Supabase postgres_changes
+    const unsubscribePeserta = subscribePesertaSupabase(() => {
       fetchData(true);
-    }, 6000);
+    }, settings);
+
+    const unsubscribeVarian = subscribeVarianSupabase(() => {
+      fetchData(true);
+    }, settings);
+
+    pollingIntervalRef.current = setInterval(() => {
+      syncVarianFromSheets();
+      fetchData(true);
+    }, 4000);
+
     return () => {
+      unsubscribePeserta();
+      unsubscribeVarian();
       if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
     };
-  }, [fetchData]);
+  }, [fetchData, settings]);
+
+  // Periodic Google Sheets PULL (Import) - for "perfect sync" if user edits Sheet directly
+  useEffect(() => {
+    if (!isAdmin || !settings.connectedSpreadsheetId || settings.autoSyncSheets === false) return;
+    
+    const pullTimer = setInterval(async () => {
+      try {
+        const spreadsheetId = settings.connectedSpreadsheetId;
+        if (!spreadsheetId) return;
+
+        const token = await getAccessToken();
+        if (!token) return;
+        
+        const details = await fetchSpreadsheetDetails(token, spreadsheetId);
+        const imported = await readSheetData(token, spreadsheetId, details.sheetName);
+        
+        if (imported && imported.length > 0) {
+          await handleUpdatePesertaFromSheets(imported);
+        }
+      } catch (err) {
+        console.warn('Auto-pull from sheets notice:', err);
+      }
+    }, 15000); // Check every 15 seconds for instant-like sync for active admin
+
+    return () => clearInterval(pullTimer);
+  }, [isAdmin, settings.connectedSpreadsheetId, settings.autoSyncSheets]);
 
   // Keep detail modal participant synced if list updates
   useEffect(() => {
@@ -348,6 +447,11 @@ export default function App() {
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        if (data.peserta) {
+          saveSinglePesertaToSupabase(data.peserta, settings).catch(() => {});
+          const updatedList = [data.peserta, ...peserta];
+          syncToConnectedSheet(updatedList);
+        }
         await fetchData(true);
         return true;
       }
@@ -372,11 +476,12 @@ export default function App() {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        await fetchData(true);
         if (data.peserta) {
+          saveSinglePesertaToSupabase(data.peserta, settings).catch(() => {});
           const updatedList = peserta.map(p => p.id === pesertaId ? data.peserta : p);
           syncToConnectedSheet(updatedList);
         }
+        await fetchData(true);
         return true;
       }
       return false;
@@ -400,7 +505,12 @@ export default function App() {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        const newPeserta = await fetchData(true);
+        if (data.peserta) {
+          saveSinglePesertaToSupabase(data.peserta, settings).catch(() => {});
+          const updatedList = peserta.map(p => p.id === pesertaId ? data.peserta : p);
+          syncToConnectedSheet(updatedList);
+        }
+        await fetchData(true);
         return true;
       }
       return false;
@@ -424,6 +534,9 @@ export default function App() {
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        deletePesertaFromSupabase(p.id, settings).catch(() => {});
+        const updatedList = peserta.filter(item => item.id !== p.id);
+        syncToConnectedSheet(updatedList);
         await fetchData(true);
       }
     } catch (err) {
@@ -445,6 +558,9 @@ export default function App() {
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        if (data.peserta) {
+          saveSinglePesertaToSupabase(data.peserta, settings).catch(() => {});
+        }
         await fetchData(true);
         return true;
       }
@@ -468,11 +584,12 @@ export default function App() {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        await fetchData(true);
         if (data.peserta) {
+          saveSinglePesertaToSupabase(data.peserta, settings).catch(() => {});
           const updatedList = peserta.map(p => p.id === pesertaId ? data.peserta : p);
           syncToConnectedSheet(updatedList);
         }
+        await fetchData(true);
         return true;
       }
       return false;
@@ -484,27 +601,10 @@ export default function App() {
   // Handle Save Settings
   const handleSaveSettings = async (newSettings: Partial<AppSettings>): Promise<boolean> => {
     try {
-      // Optimistic instant update so logo/settings reflect immediately
-      setSettings(prev => {
-        const updated = { ...prev, ...newSettings };
-        if (typeof window !== 'undefined') {
-          if (updated.connectedSpreadsheetId) {
-            localStorage.setItem('RIDHO_OK_CONNECTED_SPREADSHEET_ID', updated.connectedSpreadsheetId);
-          }
-          if (updated.connectedSpreadsheetTitle) {
-            localStorage.setItem('RIDHO_OK_CONNECTED_SPREADSHEET_TITLE', updated.connectedSpreadsheetTitle);
-          }
-        }
-        const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (cached) {
-          try {
-            const parsed = JSON.parse(cached);
-            parsed.settings = updated;
-            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(parsed));
-          } catch {}
-        }
-        return updated;
-      });
+      const updated = { ...settings, ...newSettings };
+      setSettings(updated);
+
+      saveSettingsToSupabase(newSettings, updated).catch(() => {});
 
       const res = await fetch('/api/qurban/settings', {
         method: 'POST',
@@ -520,9 +620,6 @@ export default function App() {
         if (newSettings.adminPin) {
           setAdminPin(newSettings.adminPin);
           sessionStorage.setItem(ADMIN_PIN_KEY, newSettings.adminPin);
-        }
-        if (data.settings) {
-          setSettings(data.settings);
         }
         await fetchData(true);
         return true;
@@ -573,6 +670,7 @@ export default function App() {
         onOpenSettings={() => setIsSettingsModalOpen(true)}
         onOpenVarianKambing={() => setIsVarianModalOpen(true)}
         onOpenAppsScript={() => setIsAppsScriptModalOpen(true)}
+        onOpenSupabase={() => setIsSupabaseModalOpen(true)}
         onRefresh={() => fetchData(false)}
         isRefreshing={isRefreshing}
         lastUpdatedTime={lastUpdatedTime}
@@ -662,7 +760,7 @@ export default function App() {
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 text-xs">
             {varianOptions.map((opt) => (
               <div
-                key={opt.kode || `varian-${opt.value}`}
+                key={`${opt.kode}-${opt.value}-${opt.label}`}
                 onClick={() => {
                   setPresetVariantForRegister(opt.value);
                   setIsVarianModalOpen(true);
@@ -673,7 +771,7 @@ export default function App() {
                   {opt.grade.replace('Kambing ', '')}
                 </span>
                 <span className="text-xs font-black text-[#0A192F] group-hover:text-[#B8860B] font-serif-brand block mt-0.5">
-                  {opt.label}
+                  {opt.label || formatRupiah(opt.value)}
                 </span>
               </div>
             ))}
@@ -751,6 +849,7 @@ export default function App() {
       {/* MODALS */}
       {/* 1. Varian Harga Modal */}
       <VarianHargaKambingModal
+        key={JSON.stringify(varianOptions)}
         isOpen={isVarianModalOpen}
         onClose={() => setIsVarianModalOpen(false)}
         isAdmin={isAdmin}
@@ -857,6 +956,17 @@ export default function App() {
         onClose={() => setIsSettingsModalOpen(false)}
         settings={settings}
         onSaveSettings={handleSaveSettings}
+      />
+
+      {/* 10. Supabase Database Modal */}
+      <SupabaseModal
+        isOpen={isSupabaseModalOpen}
+        onClose={() => setIsSupabaseModalOpen(false)}
+        settings={settings}
+        pesertaList={peserta}
+        onSaveSettings={handleSaveSettings}
+        onRefreshData={() => fetchData(false)}
+        isAdmin={isAdmin}
       />
 
       {/* Offline Status Toast */}
